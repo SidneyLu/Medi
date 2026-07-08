@@ -1,0 +1,10 @@
+sku_model_name,source_type,site_name,url,priority,title,document_path
+xiaomi-14,official,Xiaomi Official,https://www.mi.com/xiaomi-14,1,Xiaomi 14 官方卖点,official/launch.md
+xiaomi-14,review,ZOL,https://detail.zol.com.cn/review/xiaomi-14,1,Xiaomi 14 评测摘要,review/review.md
+xiaomi-14,community,Zhihu,https://www.zhihu.com/question/xiaomi14,1,Xiaomi 14 用户讨论,community/discussion.md
+vivo-x200,official,vivo Official,https://www.vivo.com/x200,1,vivo X200 官方卖点,official/launch.md
+vivo-x200,review,ZOL,https://detail.zol.com.cn/review/vivo-x200,1,vivo X200 评测摘要,review/review.md
+vivo-x200,community,Zhihu,https://www.zhihu.com/question/vivox200,1,vivo X200 用户讨论,community/discussion.md
+oneplus-13,official,OnePlus Official,https://www.oneplus.com/13,1,OnePlus 13 官方卖点,official/launch.md
+oneplus-13,review,ZOL,https://detail.zol.com.cn/review/oneplus-13,1,OnePlus 13 评测摘要,review/review.md
+oneplus-13,community,Zhihu,https://www.zhihu.com/question/oneplus13,1,OnePlus 13 用户讨论,community/discussion.md
