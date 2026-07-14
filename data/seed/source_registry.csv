@@ -1,7 +1,0 @@
-site_name,source_type,base_url,priority,crawl_frequency,notes
-Xiaomi Official,official,https://www.mi.com,1,daily,Brand official product pages
-vivo Official,official,https://www.vivo.com,1,daily,Brand official product pages
-OnePlus Official,official,https://www.oneplus.com,1,daily,Brand official product pages
-JD,ecommerce,https://www.jd.com,1,hourly,E-commerce reference pages
-ZOL,review,https://detail.zol.com.cn,2,weekly,Media review pages
-Zhihu,community,https://www.zhihu.com,3,weekly,Community discussions
