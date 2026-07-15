@@ -1,0 +1,58 @@
+[
+  {
+    "chunk_id": "sample-dizziness-001",
+    "article_title": "头晕和眩晕",
+    "section_title": "常见原因",
+    "source_url": "https://www.msdmanuals.cn/home",
+    "category": "symptom",
+    "content": "示例知识块：头晕可能与睡眠不足、脱水、贫血、血压变化、耳部平衡问题等多种情况有关。正式内容必须替换为 MSD 授权原文，并保留章节定位和版本信息。",
+    "tags": ["symptom_dizziness", "condition_anemia", "age_adult"],
+    "version_label": "sample",
+    "revised_at": "2026-07-15",
+    "author": "sample",
+    "reviewer": "sample",
+    "content_hash": "sample-dizziness-001"
+  },
+  {
+    "chunk_id": "sample-anemia-001",
+    "article_title": "贫血概述",
+    "section_title": "检查",
+    "source_url": "https://www.msdmanuals.cn/home",
+    "category": "disease",
+    "content": "示例知识块：贫血相关检查通常会关注血红蛋白、红细胞计数、红细胞压积等指标。正式解读应引用 MSD 指标科普，不生成诊断或处方。",
+    "tags": ["condition_anemia", "lab_hemoglobin", "test_blood"],
+    "version_label": "sample",
+    "revised_at": "2026-07-15",
+    "author": "sample",
+    "reviewer": "sample",
+    "content_hash": "sample-anemia-001"
+  },
+  {
+    "chunk_id": "sample-first-aid-001",
+    "article_title": "急救概述",
+    "section_title": "何时立即就医",
+    "source_url": "https://www.msdmanuals.cn/home",
+    "category": "first_aid",
+    "content": "示例知识块：胸痛、呼吸困难、意识障碍、严重外伤、大出血、过敏性休克等情况应优先寻求急救或急诊帮助。正式内容需替换为 MSD 急救专题授权文本。",
+    "tags": ["risk_chest_pain", "risk_dyspnea", "risk_loss_of_consciousness", "first_aid"],
+    "version_label": "sample",
+    "revised_at": "2026-07-15",
+    "author": "sample",
+    "reviewer": "sample",
+    "content_hash": "sample-first-aid-001"
+  },
+  {
+    "chunk_id": "sample-glucose-001",
+    "article_title": "血糖检查",
+    "section_title": "结果解读",
+    "source_url": "https://www.msdmanuals.cn/home",
+    "category": "test",
+    "content": "示例知识块：血糖结果需要结合采样时间、是否空腹、实验室参考区间和个人情况理解。正式报告解释只能引用 MSD 已入库指标知识。",
+    "tags": ["lab_glucose", "condition_diabetes", "test_blood"],
+    "version_label": "sample",
+    "revised_at": "2026-07-15",
+    "author": "sample",
+    "reviewer": "sample",
+    "content_hash": "sample-glucose-001"
+  }
+]
