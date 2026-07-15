@@ -9,14 +9,30 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { api } from "@/lib/api/client";
 
-const schema = z.object({ email: z.string().email("请输入有效的邮箱地址"), password: z.string().min(8, "密码至少包含 8 个字符") });
+const schema = z.object({
+  email: z.string().email("请输入有效的邮箱地址"),
+  password: z
+    .string()
+    .min(8, "密码至少包含 8 个字符")
+    .refine((value) => /[A-Za-z]/.test(value) && /\d/.test(value), "密码需同时包含字母和数字"),
+});
 type FormValues = z.infer<typeof schema>;
 
 export function AuthForm({ mode }: { mode: "login" | "register" }) {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const form = useForm<FormValues>({ resolver: zodResolver(schema), defaultValues: { email: mode === "login" ? "chen.an@example.com" : "", password: mode === "login" ? "Password123!" : "" } });
-  const mutation = useMutation({ mutationFn: (values: FormValues) => mode === "login" ? api.login(values.email, values.password) : api.register(values.email, values.password), onSuccess: (user) => { queryClient.setQueryData(["session"], user); router.push("/dashboard"); } });
+  const form = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: { email: "", password: "" },
+  });
+  const mutation = useMutation({
+    mutationFn: (values: FormValues) =>
+      mode === "login" ? api.login(values.email, values.password) : api.register(values.email, values.password),
+    onSuccess: (user) => {
+      queryClient.setQueryData(["session"], user);
+      router.push("/dashboard");
+    },
+  });
   const title = mode === "login" ? "欢迎回来" : "创建健康账户";
 
   return <main className="auth-page">
@@ -26,9 +42,9 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
       <div className="intro-points"><div className="intro-point">知识内容标注原文来源</div><div className="intro-point">健康数据按敏感信息保护</div><div className="intro-point">不替代线下诊疗</div></div>
     </section>
     <section className="auth-panel"><form className="auth-form" onSubmit={form.handleSubmit((values) => mutation.mutate(values))}>
-      <p className="eyebrow">Medi-家用医疗健康助手</p><h2>{title}</h2><p className="subcopy">{mode === "login" ? "登录后继续查看你的健康档案和咨询记录。" : "注册后请先完善健康画像，以获得更贴合的信息整理。"}</p>
+      <p className="eyebrow">Medi-家用医疗健康助手</p><h2>{title}</h2><p className="subcopy">{mode === "login" ? "登录后继续查看你的健康档案和咨询记录。" : "注册后请先完善健康画像，以获得更贴合的信息整理。密码至少 8 位，且需同时包含字母和数字。"}</p>
       <div className="field"><label htmlFor="email">邮箱</label><input id="email" autoComplete="email" placeholder="name@example.com" {...form.register("email")} />{form.formState.errors.email && <span className="field-error">{form.formState.errors.email.message}</span>}</div>
-      <div className="field"><label htmlFor="password">密码</label><input id="password" type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} {...form.register("password")} />{form.formState.errors.password && <span className="field-error">{form.formState.errors.password.message}</span>}</div>
+      <div className="field"><label htmlFor="password">密码</label><input id="password" type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} placeholder={mode === "register" ? "例如 Password123!" : undefined} {...form.register("password")} />{form.formState.errors.password && <span className="field-error">{form.formState.errors.password.message}</span>}</div>
       {mutation.isError && <div className="notice urgent">{mutation.error.message}</div>}
       <button className="primary-button" style={{ width: "100%", marginTop: 8 }} disabled={mutation.isPending}>{mutation.isPending ? "正在处理…" : mode === "login" ? "登录" : "创建账户"}<ArrowRight size={17} /></button>
       <p className="auth-footer">{mode === "login" ? "还没有账户？" : "已经有账户？"} <Link href={mode === "login" ? "/register" : "/login"}>{mode === "login" ? "注册" : "登录"}</Link></p>

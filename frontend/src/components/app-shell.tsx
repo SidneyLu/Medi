@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Activity, ClipboardPlus, FileText, House, LogOut, MessageSquareText, ShieldCheck, UserRound } from "lucide-react";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -24,8 +25,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const session = useQuery({ queryKey: ["session"], queryFn: api.getMe });
   const logout = useMutation({ mutationFn: api.logout, onSuccess: () => router.push("/login") });
 
+  useEffect(() => {
+    if (session.isError) router.replace("/login");
+  }, [router, session.isError]);
+
   if (session.isLoading) return <div className="loading"><div className="spinner" /></div>;
-  if (session.isError) { router.replace("/login"); return null; }
+  if (session.isError || !session.data) return <div className="loading"><div className="spinner" /></div>;
+
   const user = session.data;
   const current = NAV.find((entry) => isActive(pathname, entry.href))?.label ?? "Medi-家用医疗健康助手";
 

@@ -7,8 +7,18 @@ const API = `${BASE_URL}/api/v1`;
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   if (!(init.body instanceof FormData)) headers.set("Content-Type", "application/json");
-  const response = await fetch(`${API}${path}`, { ...init, headers, credentials: "include" });
-  const payload = await response.json() as ApiEnvelope<T> & { error?: { type: string } };
+  let response: Response;
+  try {
+    response = await fetch(`${API}${path}`, { ...init, headers, credentials: "include" });
+  } catch {
+    throw new ApiError(0, "network_error", "无法连接后端服务，请确认后端已启动且地址正确。");
+  }
+  let payload: ApiEnvelope<T> & { error?: { type: string } };
+  try {
+    payload = await response.json() as ApiEnvelope<T> & { error?: { type: string } };
+  } catch {
+    throw new ApiError(response.status, "invalid_response", `后端返回异常（HTTP ${response.status}）`);
+  }
   if (!response.ok || payload.code !== 0) throw new ApiError(response.status, payload.error?.type ?? "request_failed", payload.message);
   return payload.data;
 }
