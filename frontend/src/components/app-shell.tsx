@@ -7,7 +7,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
 
 const NAV = [
-  { href: "/dashboard", label: "健康工作台", icon: House },
+  { href: "/dashboard", label: "Medi", icon: House },
   { href: "/chat", label: "循证问答", icon: MessageSquareText },
   { href: "/reports", label: "报告解读", icon: FileText },
   { href: "/profile", label: "我的画像", icon: UserRound },
