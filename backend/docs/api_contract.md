@@ -6,9 +6,10 @@ This backend follows the current frontend contract in `frontend/src/lib/api/clie
 ## Common Rules
 
 - API prefix: `/api/v1`
-- Auth: HttpOnly cookie session named `medi_session`
-- Frontend requests use `credentials: "include"`
-- CORS must allow credentials and concrete origins, not `*`
+- Auth: Bearer access token in `Authorization` header
+- Login/register return `access_token`, `token_type: "bearer"`, `expires_in`
+- Frontend stores the token (e.g. `localStorage`) and sends `Authorization: Bearer <token>`
+- Cookie sessions are not used
 - JSON response envelope:
 
 ```json
@@ -34,15 +35,28 @@ Error response example:
 
 ## Auth
 
-- `POST /api/v1/auth/register` -> `201`, returns `User`, sets cookie
-- `POST /api/v1/auth/login` -> returns `User`, sets cookie
-- `POST /api/v1/auth/logout` -> returns `null`, clears cookie
-- `GET /api/v1/auth/me` -> returns `User`
+- `POST /api/v1/auth/register` -> `201`, returns `AuthSession`
+- `POST /api/v1/auth/login` -> returns `AuthSession`
+- `POST /api/v1/auth/logout` -> returns `null` (client clears local token)
+- `GET /api/v1/auth/me` -> returns `User` (requires Bearer token)
 
 `User`:
 
 ```ts
 { user_id: string; email: string; nickname: string }
+```
+
+`AuthSession`:
+
+```ts
+{
+  user_id: string;
+  email: string;
+  nickname: string;
+  access_token: string;
+  token_type: "bearer";
+  expires_in: number;
+}
 ```
 
 ## Profile
@@ -92,8 +106,8 @@ The frontend report flow is staged: upload/OCR, user confirmation, interpretatio
 
 ## Compatibility Notes
 
-This contract intentionally differs from the early planning example:
+This contract intentionally differs from the early cookie-session approach:
 
-- Auth returns `User` and uses cookies, not access tokens in JSON.
+- Auth returns Bearer `access_token` in JSON; clients send `Authorization: Bearer ...`
 - Chat uses conversations and messages, not single-shot `/chat/query`.
 - Report analysis is split into OCR confirmation and interpretation.

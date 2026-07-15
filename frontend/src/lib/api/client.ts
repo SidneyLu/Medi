@@ -1,15 +1,30 @@
-import type { ApiEnvelope, ChatMessage, Conversation, ConversationDetail, Paginated, Profile, ProfileResponse, Report, ReportItem, User } from "./types";
+import type { ApiEnvelope, AuthSession, ChatMessage, Conversation, ConversationDetail, Paginated, Profile, ProfileResponse, Report, ReportItem, User } from "./types";
 import { ApiError } from "./types";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 const API = `${BASE_URL}/api/v1`;
+const TOKEN_KEY = "medi_access_token";
+
+export function getAccessToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return window.localStorage.getItem(TOKEN_KEY);
+}
+
+export function setAccessToken(token: string | null) {
+  if (typeof window === "undefined") return;
+  if (token) window.localStorage.setItem(TOKEN_KEY, token);
+  else window.localStorage.removeItem(TOKEN_KEY);
+}
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   if (!(init.body instanceof FormData)) headers.set("Content-Type", "application/json");
+  const token = getAccessToken();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+
   let response: Response;
   try {
-    response = await fetch(`${API}${path}`, { ...init, headers, credentials: "include" });
+    response = await fetch(`${API}${path}`, { ...init, headers });
   } catch {
     throw new ApiError(0, "network_error", "无法连接后端服务，请确认后端已启动且地址正确。");
   }
@@ -23,10 +38,23 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return payload.data;
 }
 
+async function authenticate(path: "/auth/login" | "/auth/register", email: string, password: string): Promise<User> {
+  const session = await request<AuthSession>(path, { method: "POST", body: JSON.stringify({ email, password }) });
+  setAccessToken(session.access_token);
+  return { user_id: session.user_id, email: session.email, nickname: session.nickname };
+}
+
 export const api = {
-  register: (email: string, password: string) => request<User>("/auth/register", { method: "POST", body: JSON.stringify({ email, password }) }),
-  login: (email: string, password: string) => request<User>("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
-  logout: () => request<null>("/auth/logout", { method: "POST" }),
+  register: (email: string, password: string) => authenticate("/auth/register", email, password),
+  login: (email: string, password: string) => authenticate("/auth/login", email, password),
+  logout: async () => {
+    try {
+      await request<null>("/auth/logout", { method: "POST" });
+    } finally {
+      setAccessToken(null);
+    }
+    return null;
+  },
   getMe: () => request<User>("/auth/me"),
   getProfile: () => request<ProfileResponse>("/profile"),
   saveProfile: (profile: Profile) => request<ProfileResponse>("/profile", { method: "PUT", body: JSON.stringify(profile) }),

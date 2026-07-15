@@ -20,9 +20,8 @@ Open:
 
 ## Implemented Frontend Contract
 
-The frontend uses `fetch(..., { credentials: "include" })`, so this backend uses
-an HttpOnly cookie named `medi_session` rather than returning an access token in
-the JSON body.
+The frontend uses Bearer tokens. Login/register return `access_token` in JSON;
+protected routes require `Authorization: Bearer <token>`.
 
 Implemented endpoints:
 

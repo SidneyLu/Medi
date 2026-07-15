@@ -43,6 +43,12 @@ class UserData(BaseModel):
     nickname: str
 
 
+class AuthSessionData(UserData):
+    access_token: str
+    token_type: Literal["bearer"] = "bearer"
+    expires_in: int
+
+
 class ProfilePayload(BaseModel):
     nickname: str = Field(default="", max_length=80)
     birth_date: str = Field(default="", description="YYYY-MM-DD")

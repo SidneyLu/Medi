@@ -1,53 +1,47 @@
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Depends, status
 
 from app.api.deps import get_auth_service, get_current_user
 from app.core.responses import ApiResponse, ok
-from app.core.security import SESSION_COOKIE_NAME
-from app.models.schemas import LoginRequest, RegisterRequest, UserData
+from app.models.schemas import AuthSessionData, LoginRequest, RegisterRequest, UserData
 from app.services.auth_service import AuthService
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-def _set_session_cookie(response: Response, token: str, max_age: int) -> None:
-    response.set_cookie(
-        key=SESSION_COOKIE_NAME,
-        value=token,
-        max_age=max_age,
-        httponly=True,
-        samesite="lax",
-        secure=False,
-        path="/",
+def _to_auth_session(user: UserData, token: str, expires_in: int) -> AuthSessionData:
+    return AuthSessionData(
+        user_id=user.user_id,
+        email=user.email,
+        nickname=user.nickname,
+        access_token=token,
+        token_type="bearer",
+        expires_in=expires_in,
     )
 
 
-@router.post("/register", response_model=ApiResponse[UserData], status_code=status.HTTP_201_CREATED)
+@router.post("/register", response_model=ApiResponse[AuthSessionData], status_code=status.HTTP_201_CREATED)
 def register(
     payload: RegisterRequest,
-    response: Response,
     service: Annotated[AuthService, Depends(get_auth_service)],
-) -> ApiResponse[UserData]:
-    user, token, max_age = service.register(payload)
-    _set_session_cookie(response, token, max_age)
-    return ok(user)
+) -> ApiResponse[AuthSessionData]:
+    user, token, expires_in = service.register(payload)
+    return ok(_to_auth_session(user, token, expires_in))
 
 
-@router.post("/login", response_model=ApiResponse[UserData])
+@router.post("/login", response_model=ApiResponse[AuthSessionData])
 def login(
     payload: LoginRequest,
-    response: Response,
     service: Annotated[AuthService, Depends(get_auth_service)],
-) -> ApiResponse[UserData]:
-    user, token, max_age = service.login(payload)
-    _set_session_cookie(response, token, max_age)
-    return ok(user)
+) -> ApiResponse[AuthSessionData]:
+    user, token, expires_in = service.login(payload)
+    return ok(_to_auth_session(user, token, expires_in))
 
 
 @router.post("/logout", response_model=ApiResponse[None])
-def logout(response: Response) -> ApiResponse[None]:
-    response.delete_cookie(key=SESSION_COOKIE_NAME, path="/")
+def logout() -> ApiResponse[None]:
+    # Token is cleared on the client; server is currently stateless for access tokens.
     return ok(None)
 
 

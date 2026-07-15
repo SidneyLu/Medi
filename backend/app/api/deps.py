@@ -1,11 +1,11 @@
 from functools import lru_cache
 from typing import Annotated, Any
 
-from fastapi import Cookie, Depends
+from fastapi import Depends, Header
 
 from app.core.config import get_settings
 from app.core.responses import AppError
-from app.core.security import SESSION_COOKIE_NAME, decode_session_token
+from app.core.security import decode_session_token
 from app.services.auth_service import AuthService
 from app.services.knowledge_service import KnowledgeService
 from app.services.profile_service import ProfileService
@@ -44,12 +44,16 @@ def get_report_service(store: Annotated[Store, Depends(get_store)]) -> ReportSer
 
 def get_current_user(
     store: Annotated[Store, Depends(get_store)],
-    medi_session: Annotated[str | None, Cookie(alias=SESSION_COOKIE_NAME)] = None,
+    authorization: Annotated[str | None, Header(alias="Authorization")] = None,
 ) -> dict[str, Any]:
-    if not medi_session:
+    if not authorization or not authorization.lower().startswith("bearer "):
         raise AppError(status_code=401, code=40101, message="Not authenticated", error_type="request_failed")
 
-    payload = decode_session_token(medi_session)
+    token = authorization.split(" ", 1)[1].strip()
+    if not token:
+        raise AppError(status_code=401, code=40101, message="Not authenticated", error_type="request_failed")
+
+    payload = decode_session_token(token)
     user_id = payload.get("sub")
     if not user_id:
         raise AppError(status_code=401, code=40102, message="Invalid session", error_type="request_failed")

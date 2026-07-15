@@ -2,6 +2,7 @@ export type ApiEnvelope<T> = { code: number; message: string; data: T; request_i
 export type Citation = { chunk_id: string; article_title: string; section_title: string; source_url: string };
 export type RiskLevel = "low" | "medium" | "high" | "unknown";
 export type User = { user_id: string; email: string; nickname: string };
+export type AuthSession = User & { access_token: string; token_type: "bearer"; expires_in: number };
 export type Profile = { nickname: string; birth_date: string; sex_at_birth: "female" | "male" | "other" | "unknown"; height_cm?: number; weight_kg?: number; pregnancy_status: "not_applicable" | "pregnant" | "postpartum" | "unknown"; chronic_conditions: string[]; allergies: string[]; current_medications: string[] };
 export type ProfileResponse = { profile: Profile | null; tags: string[] };
 export type Conversation = { conversation_id: string; title: string; updated_at: string; preview: string };
