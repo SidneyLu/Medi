@@ -11,12 +11,12 @@ The current repository contains:
 
 The frontend contract is defined by `frontend/src/lib/api/types.ts`,
 `frontend/src/lib/api/client.ts`, `frontend/src/lib/api/handlers.ts`, and
-`frontend/API_CONTRACT.md`.
+`backend/docs/api_contract.md`.
 
 The backend implements the same contract:
 
-- Cookie session auth with `medi_session`, compatible with frontend
-  `credentials: "include"` requests.
+- Bearer token auth, compatible with the frontend `Authorization: Bearer <token>`
+  requests.
 - Unified response envelope with `code`, `message`, `data`, and `request_id`.
 - `POST /api/v1/auth/register`
 - `POST /api/v1/auth/login`
@@ -37,6 +37,8 @@ The backend implements the same contract:
 
 More backend details are in `backend/README.md` and
 `backend/docs/api_contract.md`.
+
+Connection and build steps are in `docs/CONNECT_AND_BUILD.md`.
 
 ## Backend Local Run
 
