@@ -1,4 +1,4 @@
-import type { ApiEnvelope, AuthSession, ChatMessage, Conversation, ConversationDetail, Paginated, Profile, ProfileResponse, Report, ReportItem, User } from "./types";
+import type { ApiEnvelope, AuthSession, ChatMessage, CitationDetail, Conversation, ConversationDetail, Paginated, Profile, ProfileResponse, Report, ReportItem, User } from "./types";
 import { ApiError } from "./types";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
@@ -62,6 +62,8 @@ export const api = {
   createConversation: () => request<ConversationDetail>("/chat/conversations", { method: "POST" }),
   getConversation: (id: string) => request<ConversationDetail>(`/chat/conversations/${id}`),
   sendMessage: (id: string, question: string, use_profile: boolean) => request<ChatMessage>(`/chat/conversations/${id}/messages`, { method: "POST", body: JSON.stringify({ question, use_profile }) }),
+  getCitation: (chunkId: string) => request<CitationDetail>(`/content/citations/${chunkId}`),
+  previewUrl: (documentId: string, pageNumber: number) => `${API}/content/documents/${documentId}/pages/${pageNumber}/preview`,
   uploadReport: (file: File, reportType: Report["report_type"]) => { const body = new FormData(); body.append("file", file); body.append("report_type", reportType); return request<Report>("/reports/analyze", { method: "POST", body }); },
   listReports: () => request<Paginated<Report>>("/reports"),
   getReport: (id: string) => request<Report>(`/reports/${id}`),

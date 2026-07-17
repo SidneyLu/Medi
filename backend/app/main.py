@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.deps import get_store
-from app.api.routes import auth, chat, health, knowledge, profile, reports
+from app.api.routes import auth, chat, content, health, knowledge, profile, reports
 from app.core.config import get_settings
 from app.core.responses import install_exception_handlers
 
@@ -29,6 +29,7 @@ def create_app() -> FastAPI:
     app.include_router(auth.router, prefix=settings.api_prefix)
     app.include_router(profile.router, prefix=settings.api_prefix)
     app.include_router(knowledge.router, prefix=settings.api_prefix)
+    app.include_router(content.router, prefix=settings.api_prefix)
     app.include_router(chat.router, prefix=settings.api_prefix)
     app.include_router(reports.router, prefix=settings.api_prefix)
 

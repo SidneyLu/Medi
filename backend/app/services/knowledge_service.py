@@ -1,12 +1,22 @@
 import re
+from collections import defaultdict
 
 from app.models.schemas import KnowledgeChunkData
 from app.services.storage import Store
+from app.core.config import get_settings
+from app.services.knowledge_repository import KnowledgeRepository
+from app.services.milvus_store import MilvusStore
+from app.services.qwen_retrieval import QwenEmbeddingClient, QwenRerankClient
 
 
 class KnowledgeService:
     def __init__(self, store: Store) -> None:
         self.store = store
+        self.settings = get_settings()
+        self.repository = KnowledgeRepository(self.settings.database_url) if self.settings.database_url else None
+        self.vector_store = MilvusStore(self.settings.milvus_uri, self.settings.milvus_collection, self.settings.milvus_token) if self.settings.milvus_uri else None
+        self.embedding_client = QwenEmbeddingClient(self.settings)
+        self.rerank_client = QwenRerankClient(self.settings)
 
     def search(
         self,
@@ -15,6 +25,12 @@ class KnowledgeService:
         limit: int = 5,
         category: str | None = None,
     ) -> list[KnowledgeChunkData]:
+        if self.repository and self.vector_store and self.settings.qwen_api_key:
+            try:
+                return self._hybrid_search(query, limit)
+            except Exception:
+                # Local seed data remains usable during development or when external services are down.
+                pass
         query_tokens = _tokenize(query)
         profile_tags = set(tags or [])
         scored: list[KnowledgeChunkData] = []
@@ -42,6 +58,34 @@ class KnowledgeService:
 
         scored.sort(key=lambda item: item.score, reverse=True)
         return scored[:limit]
+
+    def _hybrid_search(self, query: str, limit: int) -> list[KnowledgeChunkData]:
+        assert self.repository and self.vector_store
+        lexical = self.repository.lexical_search(query, 30)
+        vector = self.embedding_client.embed([query])[0]
+        semantic_ids = self.vector_store.search(vector, 30)
+        semantic = self.repository.chunks_by_ids([chunk_id for chunk_id, _ in semantic_ids])
+        fused: dict[str, float] = defaultdict(float)
+        for rank, row in enumerate(lexical, 1):
+            fused[str(row["chunk_id"])] += 1 / (60 + rank)
+        for rank, (chunk_id, _) in enumerate(semantic_ids, 1):
+            fused[chunk_id] += 1 / (60 + rank)
+        lexical_by_id = {str(row["chunk_id"]): row for row in lexical}
+        candidates = {**semantic, **lexical_by_id}
+        candidate_ids = sorted(fused, key=fused.get, reverse=True)[:40]
+        reranked = self.rerank_client.rerank(query, [candidates[chunk_id]["content"] for chunk_id in candidate_ids], limit)
+        ordered = [candidate_ids[index] for index, _ in reranked if 0 <= index < len(candidate_ids)]
+        if not ordered:
+            ordered = candidate_ids[:limit]
+        return [self._to_schema(candidates[chunk_id], fused.get(chunk_id, 0.0)) for chunk_id in ordered[:limit]]
+
+    @staticmethod
+    def _to_schema(row: dict, score: float) -> KnowledgeChunkData:
+        return KnowledgeChunkData(
+            chunk_id=str(row["chunk_id"]), article_title=row["article_title"], section_title=row["section_title"],
+            source_url=f"/api/v1/content/citations/{row['chunk_id']}", category=row["category"], content=row["content"],
+            score=score, tags=row.get("tags", []), version_label=None, revised_at=None,
+        )
 
 
 def _tokenize(text: str) -> list[str]:

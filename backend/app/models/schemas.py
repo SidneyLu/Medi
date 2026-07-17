@@ -73,6 +73,26 @@ class Citation(BaseModel):
     source_url: str
 
 
+class PdfBoundingBox(BaseModel):
+    page: int
+    bbox: list[float]
+
+
+class CitationDetail(BaseModel):
+    chunk_id: str
+    document_id: str
+    document_title: str
+    section_title: str
+    heading_path: list[str]
+    page_start: int
+    page_end: int
+    page_count: int
+    source_excerpt: str
+    document_version: str
+    source_bboxes: list[PdfBoundingBox] = Field(default_factory=list)
+    preview_url: str
+
+
 class KnowledgeChunkData(BaseModel):
     chunk_id: str
     article_title: str

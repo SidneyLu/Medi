@@ -1,5 +1,7 @@
 export type ApiEnvelope<T> = { code: number; message: string; data: T; request_id: string };
 export type Citation = { chunk_id: string; article_title: string; section_title: string; source_url: string };
+export type PdfBoundingBox = { page: number; bbox: number[] };
+export type CitationDetail = { chunk_id: string; document_id: string; document_title: string; section_title: string; heading_path: string[]; page_start: number; page_end: number; page_count: number; source_excerpt: string; document_version: string; source_bboxes: PdfBoundingBox[]; preview_url: string };
 export type RiskLevel = "low" | "medium" | "high" | "unknown";
 export type User = { user_id: string; email: string; nickname: string };
 export type AuthSession = User & { access_token: string; token_type: "bearer"; expires_in: number };

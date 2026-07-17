@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, ExternalLink, Pencil, Send } from "lucide-react";
 import { api } from "@/lib/api/client";
@@ -51,17 +51,14 @@ export default function DashboardPage() {
   const [useProfile, setUseProfile] = useState(true);
   const userProfile = profile.data?.profile;
 
-  useEffect(() => {
-    const firstId = conversations.data?.items[0]?.conversation_id ?? "";
-    if (!conversations.data?.items.some((item) => item.conversation_id === activeId)) {
-      setActiveId(firstId);
-    }
-  }, [activeId, conversations.data]);
+  const resolvedActiveId = conversations.data?.items.some((item) => item.conversation_id === activeId)
+    ? activeId
+    : conversations.data?.items[0]?.conversation_id ?? "";
 
   const detail = useQuery({
-    queryKey: ["conversation", activeId],
-    queryFn: () => api.getConversation(activeId),
-    enabled: Boolean(activeId),
+    queryKey: ["conversation", resolvedActiveId],
+    queryFn: () => api.getConversation(resolvedActiveId),
+    enabled: Boolean(resolvedActiveId),
   });
 
   const create = useMutation({
@@ -73,10 +70,10 @@ export default function DashboardPage() {
   });
 
   const send = useMutation({
-    mutationFn: () => api.sendMessage(activeId, question, useProfile),
+    mutationFn: () => api.sendMessage(resolvedActiveId, question, useProfile),
     onSuccess: () => {
       setQuestion("");
-      queryClient.invalidateQueries({ queryKey: ["conversation", activeId] });
+      queryClient.invalidateQueries({ queryKey: ["conversation", resolvedActiveId] });
       queryClient.invalidateQueries({ queryKey: ["conversations"] });
     },
   });
@@ -84,7 +81,7 @@ export default function DashboardPage() {
   function submit(event: FormEvent) {
     event.preventDefault();
     if (!question.trim()) return;
-    if (!activeId) {
+    if (!resolvedActiveId) {
       create.mutate(undefined, {
         onSuccess: (conversation) => {
           void api.sendMessage(conversation.conversation_id, question, useProfile).then(() => {
@@ -154,7 +151,7 @@ export default function DashboardPage() {
             <Link className="text-button" href="/chat">全部记录</Link>
           </header>
           <div className="message-stream">
-            {detail.isLoading && activeId ? (
+            {detail.isLoading && resolvedActiveId ? (
               <div className="loading compact"><div className="spinner" /></div>
             ) : detail.data?.messages.length ? (
               detail.data.messages.map((message) => <MessageBubble key={message.message_id} message={message} />)
