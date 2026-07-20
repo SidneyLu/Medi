@@ -20,7 +20,7 @@ function MessageBubble({ message }: { message: ConversationDetail["messages"][nu
       {message.risk_level === "high" && (
         <div className="notice urgent" style={{ marginBottom: 12 }}>
           <AlertTriangle size={17} />
-          <span>如存在危险，请立即联系当地急救服务或前往急诊。</span>
+          <span>如存在危险，请立即联系当地急救服务或前往急诊</span>
         </div>
       )}
       <p>{message.content}</p>
@@ -102,7 +102,7 @@ export default function DashboardPage() {
       <div className="page-heading compact">
         <div>
           <h1>{userProfile?.nickname ? `你好，${userProfile.nickname}` : "健康主页"}</h1>
-          <p>查看画像，直接开始健康咨询。</p>
+          <p>查看画像，直接开始健康咨询</p>
         </div>
       </div>
 
@@ -111,7 +111,7 @@ export default function DashboardPage() {
           <header className="panel-head">
             <div>
               <h2>健康画像</h2>
-              <p>问答时可选用这些信息。</p>
+              <p>问答时可选用这些信息</p>
             </div>
             <Link className="icon-button" href="/profile" title="编辑画像" aria-label="编辑画像">
               <Pencil size={16} />
@@ -146,7 +146,7 @@ export default function DashboardPage() {
           <header className="panel-head">
             <div>
               <h2>健康咨询</h2>
-              <p>仅提供科普参考，不替代诊疗。</p>
+              <p>仅提供科普参考，不替代诊疗</p>
             </div>
             <Link className="text-button" href="/chat">全部记录</Link>
           </header>
@@ -157,7 +157,7 @@ export default function DashboardPage() {
               detail.data.messages.map((message) => <MessageBubble key={message.message_id} message={message} />)
             ) : (
               <div className="empty compact">
-                <p>描述你的不适或健康问题，例如：「最近经常头晕，起身时更明显。」</p>
+                <p>描述你的不适或健康问题，例如：「最近经常头晕，起身时更明显」</p>
               </div>
             )}
             {(send.isPending || create.isPending) && (
@@ -171,6 +171,13 @@ export default function DashboardPage() {
             <textarea
               value={question}
               onChange={(event) => setQuestion(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.nativeEvent.isComposing) return;
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  event.currentTarget.form?.requestSubmit();
+                }
+              }}
               placeholder="输入你的健康问题…"
               aria-label="输入健康问题"
             />

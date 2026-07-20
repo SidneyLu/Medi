@@ -38,7 +38,7 @@ export default function HistoryPage() {
       <div>
         <p className="eyebrow">历史记录</p>
         <h1>问诊与报告历史</h1>
-        <p>这里汇总当前账户的健康咨询和体检报告记录，数据来自 PostgreSQL。</p>
+        <p>汇总当前账户的健康咨询和体检报告记录（数据来自 PostgreSQL）</p>
       </div>
     </div>
 
@@ -47,13 +47,13 @@ export default function HistoryPage() {
         <header className="panel-head">
           <div>
             <h2>咨询记录</h2>
-            <p>按最近更新时间排序。</p>
+            <p>按最近更新时间排序</p>
           </div>
         </header>
         <div className="panel-pad history-list">
           {conversations.isLoading && <div className="loading compact"><div className="spinner" /></div>}
-          {conversations.isError && <div className="notice urgent">无法读取咨询历史。</div>}
-          {conversations.data?.items.length === 0 && <div className="empty compact">暂无咨询记录。</div>}
+          {conversations.isError && <div className="notice urgent">无法读取咨询历史</div>}
+          {conversations.data?.items.length === 0 && <div className="empty compact">暂无咨询记录</div>}
           {conversations.data?.items.map((conversation) => <Link className="history-row" href="/chat" key={conversation.conversation_id}>
             <span className="action-icon"><MessageSquareText size={17} /></span>
             <span className="grow">
@@ -69,13 +69,13 @@ export default function HistoryPage() {
         <header className="panel-head">
           <div>
             <h2>报告记录</h2>
-            <p>上传、核对和解读结果都会保留。</p>
+            <p>上传、核对和解读结果都会保留</p>
           </div>
         </header>
         <div className="panel-pad history-list">
           {reports.isLoading && <div className="loading compact"><div className="spinner" /></div>}
-          {reports.isError && <div className="notice urgent">无法读取报告历史。</div>}
-          {reports.data?.items.length === 0 && <div className="empty compact">暂无报告记录。</div>}
+          {reports.isError && <div className="notice urgent">无法读取报告历史</div>}
+          {reports.data?.items.length === 0 && <div className="empty compact">暂无报告记录</div>}
           {reports.data?.items.map((report) => <Link className="history-row" href={reportHref(report)} key={report.report_id}>
             <span className="action-icon"><FileText size={17} /></span>
             <span className="grow">
