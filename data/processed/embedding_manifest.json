@@ -1,0 +1,14 @@
+{
+  "batch_size": 32,
+  "chunk_count": 4003,
+  "created_at": "2026-07-19T09:00:36.792622+00:00",
+  "device": "cpu",
+  "embedding_dimension": 512,
+  "input_file": "E:\\实训项目\\Medi\\data\\processed\\knowledge_chunks.jsonl",
+  "input_sha256": "2902540f4b6cd8d29bd435c906a49d2da0ad3ae3eadf6499ff7a280b7cf6bf69",
+  "model_name": "BAAI/bge-small-zh-v1.5",
+  "normalized": true,
+  "selected_end_index": 4003,
+  "selected_start_index": 0,
+  "source_chunk_count": 4003
+}
