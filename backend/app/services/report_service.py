@@ -5,8 +5,10 @@ from pathlib import Path
 from app.core.config import get_settings
 from app.core.responses import AppError
 from app.models.schemas import Citation, ReportData, ReportItem, ReportItemsUpdateRequest, ReportListData, ReportType
+from app.services.application_repository import ApplicationRepository
 from app.services.knowledge_service import KnowledgeService
 from app.services.profile_service import ProfileService
+from app.services.report_indicator_extractor import ReportIndicatorExtractor
 from app.services.storage import Store
 
 ALLOWED_SUFFIXES = {".jpg", ".jpeg", ".png", ".pdf"}
@@ -14,14 +16,16 @@ MAX_UPLOAD_BYTES = 15 * 1024 * 1024
 
 
 class ReportService:
-    def __init__(self, store: Store) -> None:
+    def __init__(self, repository: ApplicationRepository, store: Store) -> None:
+        self.repository = repository
         self.store = store
         self.settings = get_settings()
-        self.profile_service = ProfileService(store)
+        self.profile_service = ProfileService(repository)
         self.knowledge_service = KnowledgeService(store)
+        self.extractor = ReportIndicatorExtractor()
 
     def list_reports(self, user_id: str) -> ReportListData:
-        return ReportListData(items=[self._to_report_data(item) for item in self.store.list_reports(user_id)])
+        return ReportListData(items=[self._to_report_data(item) for item in self.repository.list_reports(user_id)])
 
     def analyze(self, user_id: str, file_name: str, report_type: ReportType, content: bytes) -> ReportData:
         suffix = Path(file_name).suffix.lower()
@@ -36,25 +40,39 @@ class ReportService:
         safe_file_name = f"{report_id}{suffix}"
         user_upload_dir = self.settings.upload_dir / user_id
         user_upload_dir.mkdir(parents=True, exist_ok=True)
-        (user_upload_dir / safe_file_name).write_bytes(content)
+        saved_path = user_upload_dir / safe_file_name
+        saved_path.write_bytes(content)
 
         profile_tags = self.profile_service.get_profile(user_id).tags
-        raw_text = _best_effort_text(content)
+        raw_text, extracted_items, extraction_error = self.extractor.extract(saved_path, content)
         items = self._build_ocr_items(raw_text)
-        created_at = self.store.add_report(
+        if extracted_items:
+            items = extracted_items
+            for item in items:
+                item.item_id = item.item_id or str(uuid.uuid4())
+        created_at = self.repository.add_report(
             user_id=user_id,
             report_id=report_id,
             file_name=file_name,
+            stored_file_name=safe_file_name,
             report_type=report_type,
             status="needs_confirmation",
             summary=None,
             profile_tags=profile_tags,
             items=[item.model_dump(exclude_none=True) for item in items],
+            raw_text=raw_text,
+            error_message=extraction_error,
         )
-        self.store.add_audit_log(
+        self.repository.add_audit_log(
             user_id,
             "report.analyze",
-            {"report_id": report_id, "file_name": file_name, "report_type": report_type},
+            {
+                "report_id": report_id,
+                "file_name": file_name,
+                "report_type": report_type,
+                "items": len(items),
+                "extraction_error": extraction_error,
+            },
         )
         return ReportData(
             report_id=report_id,
@@ -65,16 +83,17 @@ class ReportService:
             summary=None,
             profile_tags_used=profile_tags,
             items=items,
+            error_message=extraction_error,
         )
 
     def get_report(self, user_id: str, report_id: str) -> ReportData:
-        report = self.store.get_report(user_id, report_id)
+        report = self.repository.get_report(user_id, report_id)
         if report is None:
             raise AppError(status_code=404, code=40402, message="Report not found", error_type="not_found")
         return self._to_report_data(report)
 
     def update_items(self, user_id: str, report_id: str, payload: ReportItemsUpdateRequest) -> ReportData:
-        report = self.store.update_report(
+        report = self.repository.update_report(
             user_id,
             report_id,
             status="needs_confirmation",
@@ -82,11 +101,11 @@ class ReportService:
         )
         if report is None:
             raise AppError(status_code=404, code=40402, message="Report not found", error_type="not_found")
-        self.store.add_audit_log(user_id, "report.items.update", {"report_id": report_id, "items": len(payload.items)})
+        self.repository.add_audit_log(user_id, "report.items.update", {"report_id": report_id, "items": len(payload.items)})
         return self._to_report_data(report)
 
     def interpret(self, user_id: str, report_id: str) -> ReportData:
-        report = self.store.get_report(user_id, report_id)
+        report = self.repository.get_report(user_id, report_id)
         if report is None:
             raise AppError(status_code=404, code=40402, message="Report not found", error_type="not_found")
 
@@ -125,7 +144,7 @@ class ReportService:
             "The report has been interpreted with the confirmed OCR items. Results are educational only, "
             "not a diagnosis, prescription, or individualized treatment plan."
         )
-        updated = self.store.update_report(
+        updated = self.repository.update_report(
             user_id,
             report_id,
             status="completed",
@@ -134,17 +153,17 @@ class ReportService:
         )
         if updated is None:
             raise AppError(status_code=404, code=40402, message="Report not found", error_type="not_found")
-        self.store.add_audit_log(user_id, "report.interpret", {"report_id": report_id})
+        self.repository.add_audit_log(user_id, "report.interpret", {"report_id": report_id})
         return self._to_report_data(updated)
 
     def delete_report(self, user_id: str, report_id: str) -> None:
-        if not self.store.delete_report(user_id, report_id):
+        if not self.repository.delete_report(user_id, report_id):
             raise AppError(status_code=404, code=40402, message="Report not found", error_type="not_found")
-        self.store.add_audit_log(user_id, "report.delete", {"report_id": report_id})
+        self.repository.add_audit_log(user_id, "report.delete", {"report_id": report_id})
 
     def _build_ocr_items(self, raw_text: str) -> list[ReportItem]:
-        parsed = _parse_report_items(raw_text)
-        if not parsed:
+        items = self.extractor.parse_items(raw_text)
+        if not items:
             return [
                 ReportItem(
                     item_id=str(uuid.uuid4()),
@@ -157,7 +176,9 @@ class ReportService:
                 )
             ]
 
-        return [ReportItem(item_id=str(uuid.uuid4()), **item) for item in parsed]
+        for item in items:
+            item.item_id = item.item_id or str(uuid.uuid4())
+        return items
 
     def _to_report_data(self, report: dict) -> ReportData:
         return ReportData(
