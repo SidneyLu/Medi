@@ -12,8 +12,22 @@ export function getAccessToken(): string | null {
 
 export function setAccessToken(token: string | null) {
   if (typeof window === "undefined") return;
-  if (token) window.localStorage.setItem(TOKEN_KEY, token);
-  else window.localStorage.removeItem(TOKEN_KEY);
+  if (token) {
+    window.localStorage.setItem(TOKEN_KEY, token);
+    document.cookie = `${TOKEN_KEY}=${encodeURIComponent(token)}; Path=/; SameSite=Lax`;
+  } else {
+    window.localStorage.removeItem(TOKEN_KEY);
+    document.cookie = `${TOKEN_KEY}=; Path=/; Max-Age=0; SameSite=Lax`;
+  }
+}
+
+/** Keep cookie in sync when an older tab only has localStorage. */
+export function syncAccessTokenCookie() {
+  if (typeof window === "undefined") return;
+  const token = window.localStorage.getItem(TOKEN_KEY);
+  if (token) {
+    document.cookie = `${TOKEN_KEY}=${encodeURIComponent(token)}; Path=/; SameSite=Lax`;
+  }
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {

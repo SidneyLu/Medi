@@ -5,7 +5,7 @@ import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Activity, ClipboardPlus, FileText, House, MessageSquareText, ShieldCheck, UserRound } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api } from "@/lib/api/client";
+import { api, syncAccessTokenCookie } from "@/lib/api/client";
 
 const NAV = [
   { href: "/dashboard", label: "健康主页", crumb: "主页", icon: House },
@@ -23,6 +23,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const queryClient = useQueryClient();
+
+  useEffect(() => {
+    syncAccessTokenCookie();
+  }, []);
+
   const session = useQuery({ queryKey: ["session"], queryFn: api.getMe });
   const logout = useMutation({
     mutationFn: api.logout,
