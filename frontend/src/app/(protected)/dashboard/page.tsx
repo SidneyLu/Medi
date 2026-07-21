@@ -49,6 +49,7 @@ export default function DashboardPage() {
   const [activeId, setActiveId] = useState("");
   const [question, setQuestion] = useState("");
   const [useProfile, setUseProfile] = useState(true);
+  const [useMemory, setUseMemory] = useState(true);
   const userProfile = profile.data?.profile;
 
   const resolvedActiveId = conversations.data?.items.some((item) => item.conversation_id === activeId)
@@ -70,7 +71,7 @@ export default function DashboardPage() {
   });
 
   const send = useMutation({
-    mutationFn: () => api.sendMessage(resolvedActiveId, question, useProfile),
+    mutationFn: () => api.sendMessage(resolvedActiveId, question, useProfile, useMemory),
     onSuccess: () => {
       setQuestion("");
       queryClient.invalidateQueries({ queryKey: ["conversation", resolvedActiveId] });
@@ -84,7 +85,7 @@ export default function DashboardPage() {
     if (!resolvedActiveId) {
       create.mutate(undefined, {
         onSuccess: (conversation) => {
-          void api.sendMessage(conversation.conversation_id, question, useProfile).then(() => {
+          void api.sendMessage(conversation.conversation_id, question, useProfile, useMemory).then(() => {
             setQuestion("");
             setActiveId(conversation.conversation_id);
             queryClient.invalidateQueries({ queryKey: ["conversation", conversation.conversation_id] });
@@ -186,6 +187,13 @@ export default function DashboardPage() {
                 <input type="checkbox" checked={useProfile} onChange={(event) => setUseProfile(event.target.checked)} />
                 使用健康画像
               </label>
+              <label className="checkbox">
+                <input type="checkbox" checked={useMemory} onChange={(event) => setUseMemory(event.target.checked)} />
+                使用多轮记忆
+              </label>
+              {useProfile && !userProfile && (
+                <Link href="/profile" className="text-button">去完善画像</Link>
+              )}
               <button className="primary-button" disabled={!question.trim() || send.isPending || create.isPending}>
                 {send.isPending || create.isPending ? "发送中…" : "发送"}
                 <Send size={16} />

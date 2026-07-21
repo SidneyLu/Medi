@@ -7,6 +7,8 @@ from app.models.schemas import KnowledgeChunkData
 
 
 VALID_RISK_LEVELS = {"low", "medium", "high", "unknown"}
+MAX_HISTORY_MESSAGES = 8
+MAX_ASSISTANT_HISTORY_CHARS = 420
 
 
 class QwenClient:
@@ -17,48 +19,86 @@ class QwenClient:
         question: str,
         profile_tags: list[str],
         chunks: list[KnowledgeChunkData],
+        profile_context: str = "",
+        history: list[dict] | None = None,
     ) -> dict:
         settings = get_settings()
+        history = history or []
         if not settings.qwen_api_key:
-            return self._generate_placeholder(question, profile_tags, chunks)
-        return self._generate_with_qwen(question, profile_tags, chunks, settings)
+            return self._generate_placeholder(question, profile_tags, chunks, profile_context, history)
+        return self._generate_with_qwen(question, profile_tags, chunks, profile_context, history, settings)
 
     def _generate_placeholder(
         self,
         question: str,
         profile_tags: list[str],
         chunks: list[KnowledgeChunkData],
+        profile_context: str = "",
+        history: list[dict] | None = None,
     ) -> dict:
         first_chunk = chunks[0]
-        answer = (
-            f"根据检索到的 MSD 授权知识，您的问题“{question}”主要与《{first_chunk.article_title}》中的"
-            f"“{first_chunk.section_title}”相关。\n\n"
-            "当前系统已经成功检索到相关医学资料，但大模型回答功能尚未正式接入，因此本阶段仅展示知识检索与引用结果，不提供具体诊断或个体化治疗方案。\n\n"
-            "本系统仅用于健康科普，不能替代医生诊断。如果症状持续、加重或出现明显危险信号，请及时前往正规医疗机构就诊。"
+        history = history or []
+
+        status_lines = ["【本地联调自检】当前未配置大模型 API Key，以下用于验证功能是否接通（非正式模型回答）："]
+        if profile_context.strip():
+            status_lines.append("健康画像：已启用，并已读入表单内容")
+            status_lines.append(profile_context.strip())
+        elif profile_tags:
+            status_lines.append("健康画像：已启用（标签）" + "、".join(profile_tags))
+        else:
+            status_lines.append("健康画像：本轮未启用或未填写")
+
+        if history:
+            prior_users = [
+                str(item.get("content") or "").strip()
+                for item in history
+                if item.get("role") == "user" and str(item.get("content") or "").strip()
+            ]
+            status_lines.append(f"多轮记忆：已启用，已载入历史消息 {len(history)} 条")
+            if prior_users:
+                status_lines.append("本会话最近用户提问：" + " | ".join(prior_users[-3:]))
+        else:
+            status_lines.append("多轮记忆：本轮未启用（或无可载入历史）")
+
+        status_lines.append(
+            f"知识检索：命中《{first_chunk.article_title}》/ {first_chunk.section_title}"
         )
+        status_lines.append(f"本轮问题：{question}")
+        status_lines.append(
+            f"资料摘录：{first_chunk.content[:220].strip()}"
+            f"{'…' if len(first_chunk.content) > 220 else ''}"
+        )
+        status_lines.append(
+            "若要得到真正的个性化生成回答，请在 backend/.env 配置 DASHSCOPE_API_KEY 后重启后端。"
+        )
+
+        answer = "\n".join(status_lines)
         suggestions = [
-            "记录症状出现的时间、持续时长、诱因及缓解因素。",
-            "整理既往病史、过敏史、当前用药和近期检查报告。",
-            "可结合下方引用的 MSD 原文页面了解相关健康知识。",
-            "如果症状持续、加重或影响正常生活，请及时咨询医生。",
+            "可切换「使用健康画像 / 使用多轮会话记忆」勾选后再问一轮，对比自检区变化。",
+            "配置 DASHSCOPE_API_KEY 后即可验证完整大模型回答。",
+            "本系统仅供健康科普，不能替代医生诊断。",
         ]
-        if profile_tags:
-            suggestions.insert(2, "可结合年龄、妊娠状态、过敏史及慢性疾病等个人情况进一步评估。")
-        return {"answer": answer, "suggestions": suggestions, "risk_level": "low"}
+        if history:
+            suggestions.insert(0, "取消勾选多轮记忆后再追问，自检区应显示“多轮记忆：本轮未启用”。")
+        if profile_context.strip() or profile_tags:
+            suggestions.insert(0, "取消勾选健康画像后再提问，自检区应显示“健康画像：本轮未启用”。")
+        return {"answer": answer, "suggestions": suggestions[:5], "risk_level": "low"}
 
     def _generate_with_qwen(
         self,
         question: str,
         profile_tags: list[str],
         chunks: list[KnowledgeChunkData],
+        profile_context: str,
+        history: list[dict],
         settings,
     ) -> dict:
         url = f"{settings.qwen_base_url.rstrip('/')}/chat/completions"
         payload = {
             "model": settings.qwen_model,
-            "messages": self._build_messages(question, profile_tags, chunks[:5]),
+            "messages": self._build_messages(question, profile_tags, chunks[:5], profile_context, history),
             "temperature": 0.2,
-            "max_tokens": 800,
+            "max_tokens": 900,
             "enable_thinking": False,
             "response_format": {"type": "json_object"},
         }
@@ -99,28 +139,34 @@ class QwenClient:
         question: str,
         profile_tags: list[str],
         chunks: list[KnowledgeChunkData],
+        profile_context: str = "",
+        history: list[dict] | None = None,
     ) -> list[dict]:
         system_prompt = (
             "你是Medi健康科普助手。\n"
-            "只能依据用户问题和提供的MSD资料回答，不得使用资料之外的医学事实补全答案。\n"
+            "只能依据用户问题、会话历史（若提供）、用户健康画像（若提供）和提供的MSD资料回答，"
+            "不得使用资料之外的医学事实补全答案。\n"
             "回答要求：\n"
             "1. 使用简体中文。\n"
-            "2. 直接回答用户问题。\n"
-            "3. 不进行确诊。\n"
-            "4. 不开具处方。\n"
-            "5. 不擅自给出药物剂量。\n"
-            "6. 不替代医生诊断。\n"
-            "7. 资料不足时明确说明“当前检索资料不足以支持明确结论”。\n"
-            "8. 存在明显危险信号时，提示及时线下就医或急诊。\n"
-            "9. 不得声称已经查看用户未提供的检查报告。\n"
-            "10. 不得编造来源、页码、疾病或检查结果。\n"
-            "11. 返回内容必须是JSON对象，不得包含Markdown代码块。\n"
+            "2. 直接回答用户本轮问题，并正确理解指代（如“这个”“刚才”“还有呢”）。\n"
+            "3. 若提供了会话历史，保持多轮连贯；不得编造历史中未出现的症状或检查结果。\n"
+            "4. 若提供了健康画像，必须结合年龄/性别/妊娠状态/慢病/过敏/用药给出个性化科普提示。\n"
+            "5. 不进行确诊。\n"
+            "6. 不开具处方。\n"
+            "7. 不擅自给出药物剂量。\n"
+            "8. 不替代医生诊断。\n"
+            "9. 资料不足时明确说明“当前检索资料不足以支持明确结论”。\n"
+            "10. 存在明显危险信号时，提示及时线下就医或急诊。\n"
+            "11. 不得声称已经查看用户未提供的检查报告。\n"
+            "12. 不得编造来源、页码、疾病或检查结果。\n"
+            "13. 返回内容必须是JSON对象，不得包含Markdown代码块。\n"
             "risk_level只能是low、medium、high、unknown。"
         )
         user_prompt = (
-            f"用户问题：{question}\n\n"
-            f"{self._format_profile_tags(profile_tags)}"
-            "请基于以下资料回答。\n\n"
+            f"{self._format_history_block(history or [])}"
+            f"用户本轮问题：{question}\n\n"
+            f"{self._format_profile_block(profile_context, profile_tags)}"
+            "请基于以下资料回答；如有会话历史与画像，请一并体现连贯性与个性化。\n\n"
             f"{self._format_chunks(chunks)}\n\n"
             "请严格返回以下JSON格式：\n"
             '{"answer":"中文科普回答","suggestions":["建议1","建议2"],"risk_level":"low"}'
@@ -131,13 +177,35 @@ class QwenClient:
         ]
 
     @staticmethod
-    def _format_profile_tags(profile_tags: list[str]) -> str:
-        if not profile_tags:
+    def _format_history_block(history: list[dict]) -> str:
+        if not history:
             return ""
-        tags = "、".join(str(tag) for tag in profile_tags if str(tag).strip())
-        if not tags:
+        lines = ["近期会话记忆（用于理解追问与指代，不得编造未出现内容）："]
+        for item in history:
+            role = item.get("role")
+            content = str(item.get("content") or "").strip()
+            if not content or role not in {"user", "assistant"}:
+                continue
+            label = "用户" if role == "user" else "助手"
+            if role == "assistant" and len(content) > MAX_ASSISTANT_HISTORY_CHARS:
+                content = content[:MAX_ASSISTANT_HISTORY_CHARS] + "…"
+            lines.append(f"{label}：{content}")
+        if len(lines) == 1:
             return ""
-        return f"用户画像标签：{tags}\n\n"
+        return "\n".join(lines) + "\n\n"
+
+    @staticmethod
+    def _format_profile_block(profile_context: str, profile_tags: list[str]) -> str:
+        parts: list[str] = []
+        if profile_context.strip():
+            parts.append("用户健康画像（来自个人信息表单，请用于个性化科普）：\n" + profile_context.strip())
+        if profile_tags:
+            tags = "、".join(str(tag) for tag in profile_tags if str(tag).strip())
+            if tags:
+                parts.append(f"画像标签：{tags}")
+        if not parts:
+            return "用户健康画像：本次未启用或尚未填写。\n\n"
+        return "\n".join(parts) + "\n\n"
 
     @staticmethod
     def _format_chunks(chunks: list[KnowledgeChunkData]) -> str:

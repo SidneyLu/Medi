@@ -35,6 +35,16 @@ def get_conversation(
     return ok(service.get_conversation(current_user["id"], conversation_id))
 
 
+@router.delete("/conversations/{conversation_id}", response_model=ApiResponse[None])
+def delete_conversation(
+    conversation_id: str,
+    current_user: Annotated[dict[str, Any], Depends(get_current_user)],
+    service: Annotated[RagService, Depends(get_rag_service)],
+) -> ApiResponse[None]:
+    service.delete_conversation(current_user["id"], conversation_id)
+    return ok(None)
+
+
 @router.post("/conversations/{conversation_id}/messages", response_model=ApiResponse[ChatMessage])
 def send_message(
     conversation_id: str,

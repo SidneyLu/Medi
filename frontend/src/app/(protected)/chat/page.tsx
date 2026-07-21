@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, FileText, Plus, Send } from "lucide-react";
@@ -35,6 +36,7 @@ function MessageBubble({ message, onPreview }: { message: ConversationDetail["me
       )}
       {message.profile_tags_used && message.profile_tags_used.length > 0 && (
         <div className="tag-row" style={{ marginTop: 13 }}>
+          <span className="tag">已结合健康画像</span>
           {message.profile_tags_used.map((tag) => <span className="tag neutral" key={tag}>{tag}</span>)}
         </div>
       )}
@@ -58,11 +60,14 @@ function MessageBubble({ message, onPreview }: { message: ConversationDetail["me
 
 export default function ChatPage() {
   const queryClient = useQueryClient();
+  const profile = useQuery({ queryKey: ["profile"], queryFn: api.getProfile });
   const conversations = useQuery({ queryKey: ["conversations"], queryFn: api.listConversations });
   const [activeId, setActiveId] = useState<string>("chat-demo");
   const [question, setQuestion] = useState("");
   const [useProfile, setUseProfile] = useState(true);
+  const [useMemory, setUseMemory] = useState(true);
   const [previewChunkId, setPreviewChunkId] = useState<string | null>(null);
+  const hasProfile = Boolean(profile.data?.profile);
   const resolvedActiveId = conversations.data?.items.some((item) => item.conversation_id === activeId)
     ? activeId
     : conversations.data?.items[0]?.conversation_id ?? "";
@@ -79,7 +84,7 @@ export default function ChatPage() {
     },
   });
   const send = useMutation({
-    mutationFn: () => api.sendMessage(resolvedActiveId, question, useProfile),
+    mutationFn: () => api.sendMessage(resolvedActiveId, question, useProfile, useMemory),
     onSuccess: () => {
       setQuestion("");
       queryClient.invalidateQueries({ queryKey: ["conversation", resolvedActiveId] });
@@ -113,7 +118,11 @@ export default function ChatPage() {
           </header>
           <div className="conversation-list">
             {conversations.data?.items.map((conversation) => (
-              <button key={conversation.conversation_id} className="conversation-item" onClick={() => setActiveId(conversation.conversation_id)}>
+              <button
+                key={conversation.conversation_id}
+                className={`conversation-item ${conversation.conversation_id === resolvedActiveId ? "active" : ""}`}
+                onClick={() => setActiveId(conversation.conversation_id)}
+              >
                 <strong>{conversation.title}</strong>
                 <small>{conversation.preview || "等待输入问题"}</small>
               </button>
@@ -143,10 +152,28 @@ export default function ChatPage() {
                 )}
               </div>
               <form className="chat-composer" onSubmit={submit}>
-                <label className="checkbox composer-profile">
-                  <input type="checkbox" checked={useProfile} onChange={(event) => setUseProfile(event.target.checked)} />
-                  使用我的健康画像
-                </label>
+                <div className="composer-toggles">
+                  <label className="checkbox composer-profile">
+                    <input type="checkbox" checked={useProfile} onChange={(event) => setUseProfile(event.target.checked)} />
+                    使用我的健康画像
+                  </label>
+                  <label className="checkbox composer-profile">
+                    <input type="checkbox" checked={useMemory} onChange={(event) => setUseMemory(event.target.checked)} />
+                    使用多轮会话记忆
+                  </label>
+                </div>
+                {useProfile && !hasProfile && (
+                  <p className="composer-hint">
+                    尚未填写健康画像，请先完善 <Link href="/profile">我的画像</Link>，否则无法个性化
+                  </p>
+                )}
+                {useProfile && hasProfile && profile.data?.tags?.length ? (
+                  <div className="tag-row composer-tags">
+                    {profile.data.tags.slice(0, 8).map((tag) => (
+                      <span className="tag neutral" key={tag}>{tag}</span>
+                    ))}
+                  </div>
+                ) : null}
                 <div className="composer-row">
                   <textarea
                     value={question}

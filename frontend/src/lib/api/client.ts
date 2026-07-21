@@ -75,7 +75,12 @@ export const api = {
   listConversations: () => request<Paginated<Conversation>>("/chat/conversations"),
   createConversation: () => request<ConversationDetail>("/chat/conversations", { method: "POST" }),
   getConversation: (id: string) => request<ConversationDetail>(`/chat/conversations/${id}`),
-  sendMessage: (id: string, question: string, use_profile: boolean) => request<ChatMessage>(`/chat/conversations/${id}/messages`, { method: "POST", body: JSON.stringify({ question, use_profile }) }),
+  deleteConversation: (id: string) => request<null>(`/chat/conversations/${id}`, { method: "DELETE" }),
+  sendMessage: (id: string, question: string, use_profile: boolean, use_memory = true) =>
+    request<ChatMessage>(`/chat/conversations/${id}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ question, use_profile, use_memory }),
+    }),
   getCitation: (chunkId: string) => request<CitationDetail>(`/content/citations/${chunkId}`),
   previewUrl: (documentId: string, pageNumber: number) => `${API}/content/documents/${documentId}/pages/${pageNumber}/preview`,
   uploadReport: (file: File, reportType: Report["report_type"]) => { const body = new FormData(); body.append("file", file); body.append("report_type", reportType); return request<Report>("/reports/analyze", { method: "POST", body }); },

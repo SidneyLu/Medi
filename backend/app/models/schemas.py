@@ -119,6 +119,7 @@ class Paginated(BaseModel):
 class ChatQueryRequest(BaseModel):
     question: str = Field(..., min_length=2, max_length=1000)
     use_profile: bool = True
+    use_memory: bool = True
 
 
 class Conversation(BaseModel):

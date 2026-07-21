@@ -81,7 +81,7 @@ class ApplicationRepository:
         conversation = {
             "conversation_id": str(uuid.uuid4()),
             "user_id": user_id,
-            "title": "New health chat",
+            "title": "新咨询",
             "preview": "",
             "messages": [],
             "updated_at": now,
@@ -122,6 +122,14 @@ class ApplicationRepository:
                 (user_id, conversation_id),
             ).fetchone()
         return _row_to_conversation(row) if row else None
+
+    def delete_conversation(self, user_id: str, conversation_id: str) -> bool:
+        with self._connect() as conn:
+            result = conn.execute(
+                "DELETE FROM medi_conversations WHERE user_id = %s AND conversation_id = %s",
+                (user_id, conversation_id),
+            )
+        return bool(result.rowcount)
 
     def update_conversation(self, user_id: str, conversation: dict[str, Any]) -> None:
         with self._connect() as conn:
