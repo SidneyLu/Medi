@@ -48,7 +48,7 @@ Full details are in `docs/api_contract.md`.
 
 ```text
 app/
-  api/            FastAPI routes and cookie auth dependency
+  api/            FastAPI routes and Bearer auth dependency
   core/           settings, response envelope, signed session token helpers
   models/         Pydantic models matching the frontend TypeScript types
   services/       auth, profile, knowledge retrieval, chat/RAG, reports
