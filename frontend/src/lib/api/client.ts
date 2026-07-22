@@ -12,8 +12,22 @@ export function getAccessToken(): string | null {
 
 export function setAccessToken(token: string | null) {
   if (typeof window === "undefined") return;
-  if (token) window.localStorage.setItem(TOKEN_KEY, token);
-  else window.localStorage.removeItem(TOKEN_KEY);
+  if (token) {
+    window.localStorage.setItem(TOKEN_KEY, token);
+    document.cookie = `${TOKEN_KEY}=${encodeURIComponent(token)}; Path=/; SameSite=Lax`;
+  } else {
+    window.localStorage.removeItem(TOKEN_KEY);
+    document.cookie = `${TOKEN_KEY}=; Path=/; Max-Age=0; SameSite=Lax`;
+  }
+}
+
+/** Keep cookie in sync when an older tab only has localStorage. */
+export function syncAccessTokenCookie() {
+  if (typeof window === "undefined") return;
+  const token = window.localStorage.getItem(TOKEN_KEY);
+  if (token) {
+    document.cookie = `${TOKEN_KEY}=${encodeURIComponent(token)}; Path=/; SameSite=Lax`;
+  }
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -61,7 +75,12 @@ export const api = {
   listConversations: () => request<Paginated<Conversation>>("/chat/conversations"),
   createConversation: () => request<ConversationDetail>("/chat/conversations", { method: "POST" }),
   getConversation: (id: string) => request<ConversationDetail>(`/chat/conversations/${id}`),
-  sendMessage: (id: string, question: string, use_profile: boolean) => request<ChatMessage>(`/chat/conversations/${id}/messages`, { method: "POST", body: JSON.stringify({ question, use_profile }) }),
+  deleteConversation: (id: string) => request<null>(`/chat/conversations/${id}`, { method: "DELETE" }),
+  sendMessage: (id: string, question: string, use_profile: boolean, use_memory = true) =>
+    request<ChatMessage>(`/chat/conversations/${id}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ question, use_profile, use_memory }),
+    }),
   getCitation: (chunkId: string) => request<CitationDetail>(`/content/citations/${chunkId}`),
   previewUrl: (documentId: string, pageNumber: number) => `${API}/content/documents/${documentId}/pages/${pageNumber}/preview`,
   uploadReport: (file: File, reportType: Report["report_type"]) => { const body = new FormData(); body.append("file", file); body.append("report_type", reportType); return request<Report>("/reports/analyze", { method: "POST", body }); },
