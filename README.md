@@ -7,6 +7,40 @@ The current repository contains:
 - `frontend/`: Next.js frontend.
 - `backend/`: FastAPI backend matching the current frontend API contract.
 
+## One-click Local Run
+
+On Windows, start both backend and frontend from the repository root:
+
+```powershell
+.\start-dev.ps1
+```
+
+Or double-click `start-dev.bat`.
+
+Application data is stored in PostgreSQL. Before running the backend, make sure
+`DATABASE_URL` in `backend/.env` points to a reachable PostgreSQL database. If
+Docker is available, the bundled development database can be started with:
+
+```powershell
+cd backend
+docker compose -f docker-compose.knowledge.yml up -d postgres
+cd ..
+```
+
+The launcher starts:
+
+- Backend: `http://127.0.0.1:8000`
+- Swagger: `http://127.0.0.1:8000/docs`
+- Frontend: `http://127.0.0.1:3000`
+
+Useful options:
+
+```powershell
+.\start-dev.ps1 -BackendPort 8001 -FrontendPort 3001
+.\start-dev.ps1 -SkipInstall
+.\start-dev.ps1 -CheckOnly
+```
+
 ## Backend Contract
 
 The frontend contract is defined by `frontend/src/lib/api/types.ts`,
@@ -15,8 +49,8 @@ The frontend contract is defined by `frontend/src/lib/api/types.ts`,
 
 The backend implements the same contract:
 
-- Bearer token auth, compatible with the frontend `Authorization: Bearer <token>`
-  requests.
+- Bearer token auth. Login/register return `access_token`; protected requests
+  send `Authorization: Bearer <token>`.
 - Unified response envelope with `code`, `message`, `data`, and `request_id`.
 - `POST /api/v1/auth/register`
 - `POST /api/v1/auth/login`
@@ -55,7 +89,8 @@ Swagger: `http://127.0.0.1:8000/docs`
 
 ## Current Backend Notes
 
-- SQLite is used for first-stage local integration.
+- PostgreSQL stores users, profiles, chat history, reports, and audit logs.
+- SQLite is kept only for local seed-knowledge fallback.
 - MSD knowledge data in `backend/app/data/seed_knowledge.json` is sample-only.
 - Qwen and OCR are isolated behind service adapters for later replacement.
 - Red-flag symptom handling is deterministic and independent from model output.

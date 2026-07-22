@@ -6,10 +6,15 @@ FastAPI backend for the current Medi frontend contract.
 
 ```powershell
 cd backend
+copy .env.example .env
+
+# Start PostgreSQL for application data.
+# If Docker is available:
+docker compose -f docker-compose.knowledge.yml up -d postgres
+
 python -m venv .venv
 .\.venv\Scripts\activate
 pip install -r requirements.txt
-copy .env.example .env
 uvicorn app.main:app --reload
 ```
 
@@ -51,18 +56,25 @@ app/
   api/            FastAPI routes and Bearer auth dependency
   core/           settings, response envelope, signed session token helpers
   models/         Pydantic models matching the frontend TypeScript types
-  services/       auth, profile, knowledge retrieval, chat/RAG, reports
+  services/       auth, profile, PostgreSQL app repository, knowledge retrieval, chat/RAG, reports
   data/           sample-only knowledge chunks for local integration
 contracts/        TypeScript API contract mirror
 docs/             API contract and MSD text schema
 ```
 
-SQLite is used for first-stage local integration. Production replacement points:
+PostgreSQL is now used for application data:
 
-- PostgreSQL for users, profiles, reports, conversations, MSD metadata, and audit logs.
+- `medi_users`: registered users and password hashes.
+- `medi_profiles`: health profiles and generated profile tags.
+- `medi_conversations`: chat history records.
+- `medi_reports`: uploaded report metadata, extracted indicators, raw text, and interpretation status.
+- `medi_audit_logs`: auth/profile/chat/report audit events.
+
+SQLite remains only as a local fallback for seed knowledge chunks when the vector knowledge base is not configured. Production replacement points:
+
 - Milvus for chunk-level vector retrieval.
 - Qwen API for answer generation, query rewriting/reranking, and report interpretation.
-- OCR engine for reliable medical report extraction.
+- OCR engine for image-only medical report extraction.
 
 ## Safety Boundaries
 
