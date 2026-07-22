@@ -52,11 +52,10 @@ def get_rag_service(
     return RagService(repository, store)
 
 
-def get_report_service(
-    repository: Annotated[ApplicationRepository, Depends(get_application_repository)],
-    store: Annotated[Store, Depends(get_store)],
-) -> ReportService:
-    return ReportService(repository, store)
+@lru_cache
+def get_report_service() -> ReportService:
+    # Cache the service so PaddleOCR model stays loaded across uploads.
+    return ReportService(get_application_repository(), get_store())
 
 
 def get_current_user(

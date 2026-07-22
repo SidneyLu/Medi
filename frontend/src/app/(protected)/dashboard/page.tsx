@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ExternalLink, Pencil, Send } from "lucide-react";
+import { AlertTriangle, FileText, Pencil, Send } from "lucide-react";
 import { api } from "@/lib/api/client";
 import type { ConversationDetail } from "@/lib/api/types";
 
@@ -27,14 +27,14 @@ function MessageBubble({ message }: { message: ConversationDetail["messages"][nu
       {message.citations && message.citations.length > 0 && (
         <div className="citation-list">
           {message.citations.map((citation) => (
-            <a className="citation" href={citation.source_url} target="_blank" rel="noreferrer" key={citation.chunk_id}>
-              <ExternalLink size={15} />
+            <div className="citation citation-static" key={citation.chunk_id}>
+              <FileText size={15} />
               <span>
                 <b>{citation.article_title}</b>
                 <br />
                 {citation.section_title}
               </span>
-            </a>
+            </div>
           ))}
         </div>
       )}

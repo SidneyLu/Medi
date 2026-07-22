@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import math
 import re
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -17,7 +18,35 @@ RANGE_PATTERN = re.compile(
 )
 NUMBER_PATTERN = re.compile(r"(?P<flag>[<>])?(?P<value>\d+(?:\.\d+)?)")
 DEFAULT_OCR_CONFIDENCE_THRESHOLD = 0.5
+# Dense scanned tables are slow on CPU; prefer smaller side length over hard timeouts.
+OCR_MAX_IMAGE_SIDE = 1600
 IMAGE_AI_NO_ITEMS_MESSAGE = "图片文字已识别，但未筛选出有效体检指标。"
+_OCR_ENGINE_LOCK = threading.Lock()
+_SHARED_OCR_ENGINE: Any | None = None
+_OCR_WARMUP_STARTED = False
+
+
+def warm_up_ocr_engine(background: bool = True) -> None:
+    """Load PaddleOCR into memory once so the first upload is not a cold start."""
+
+    global _OCR_WARMUP_STARTED
+    if _OCR_WARMUP_STARTED and _SHARED_OCR_ENGINE is not None:
+        return
+    _OCR_WARMUP_STARTED = True
+
+    def _load() -> None:
+        try:
+            ReportIndicatorExtractor()._get_ocr_engine()
+        except Exception:
+            # Warm-up is best-effort; upload path still reports real errors.
+            pass
+
+    if background:
+        threading.Thread(target=_load, name="paddleocr-warmup", daemon=True).start()
+    else:
+        _load()
+
+
 HEADER_WORDS = {
     "项目",
     "名称",
@@ -57,7 +86,6 @@ class ReportIndicatorExtractor:
         qwen_client: QwenClient | None = None,
     ) -> None:
         self.min_confidence = min_confidence
-        self._ocr_engine: Any | None = None
         self.qwen_client = qwen_client or QwenClient()
 
     def extract(self, file_path: Path, content: bytes) -> tuple[str, list[ReportItem], str | None]:
@@ -78,6 +106,9 @@ class ReportIndicatorExtractor:
             raw_text, error_message = self._extract_image_text(file_path)
             if raw_text.strip() and error_message is None:
                 items, error_message = self._extract_image_items_with_ai(raw_text)
+            elif raw_text.strip():
+                # Keep rule-based items even when OCR reported a soft warning.
+                items = self.parse_items(raw_text)
         else:
             raw_text = _best_effort_decode(content)
             items = self.parse_items(raw_text)
@@ -93,17 +124,13 @@ class ReportIndicatorExtractor:
         return clean_text("\n".join(parts))
 
     def _extract_image_text(self, file_path: Path) -> tuple[str, str | None]:
+        # Match classmate behavior: wait for OCR to finish (no hard timeout that
+        # falsely marks a slow-but-working scan as failed).
+        ocr_path = self._prepare_ocr_image(file_path)
+        cleanup_path = ocr_path if ocr_path != file_path else None
         try:
             ocr = self._get_ocr_engine()
-        except ImportError:
-            return "", "图片 OCR 需要安装 paddleocr 和 paddlepaddle。"
-        except Exception as exc:
-            return "", f"图片 OCR 初始化失败：{exc.__class__.__name__}"
-        try:
-            if hasattr(ocr, "predict"):
-                result = ocr.predict(str(file_path))
-            else:
-                result = ocr.ocr(str(file_path), cls=True)
+            result = self._run_ocr(ocr, ocr_path)
             lines = [
                 line
                 for line in _iter_paddle_lines(result)
@@ -111,29 +138,87 @@ class ReportIndicatorExtractor:
             ]
             raw_text = build_ocr_raw_text(lines)
             if not raw_text:
-                return "", "图片 OCR 未识别到有效文字。"
+                return "", "图片 OCR 未识别到有效文字。复杂表格/印章可能导致识别为空，可裁剪检验区后重试或手工填写。"
             return raw_text, None
+        except ImportError:
+            return "", "图片 OCR 需要安装 paddleocr 和 paddlepaddle。"
         except Exception as exc:
-            return "", f"图片 OCR 识别失败：{exc.__class__.__name__}"
+            return "", _safe_extraction_error(f"图片 OCR 识别失败：{exc.__class__.__name__}")
+        finally:
+            if cleanup_path and cleanup_path.exists():
+                try:
+                    cleanup_path.unlink()
+                except OSError:
+                    pass
+
+    def _run_ocr(self, ocr: Any, file_path: Path) -> Any:
+        if hasattr(ocr, "predict"):
+            result = ocr.predict(str(file_path))
+        else:
+            result = ocr.ocr(str(file_path), cls=True)
+        if result is None:
+            return []
+        return result
+
+    def _prepare_ocr_image(self, file_path: Path) -> Path:
+        """Downscale huge photos so CPU OCR does not freeze the machine."""
+        try:
+            from PIL import Image
+
+            with Image.open(file_path) as image:
+                rgb = image.convert("RGB")
+                width, height = rgb.size
+                longest = max(width, height)
+                if longest <= OCR_MAX_IMAGE_SIDE:
+                    return file_path
+                scale = OCR_MAX_IMAGE_SIDE / float(longest)
+                resized = rgb.resize((max(1, int(width * scale)), max(1, int(height * scale))))
+                output = file_path.with_name(f"{file_path.stem}_ocr_resized.jpg")
+                resized.save(output, format="JPEG", quality=85, optimize=True)
+                return output
+        except Exception:
+            return file_path
 
     def _get_ocr_engine(self) -> Any:
-        if self._ocr_engine is not None:
-            return self._ocr_engine
-        from paddleocr import PaddleOCR
+        global _SHARED_OCR_ENGINE
+        if _SHARED_OCR_ENGINE is not None:
+            return _SHARED_OCR_ENGINE
+        with _OCR_ENGINE_LOCK:
+            if _SHARED_OCR_ENGINE is not None:
+                return _SHARED_OCR_ENGINE
+            from paddleocr import PaddleOCR
 
-        try:
-            self._ocr_engine = PaddleOCR(lang="ch", use_textline_orientation=True, device="cpu")
-        except TypeError:
-            self._ocr_engine = PaddleOCR(lang="ch", use_angle_cls=True, use_gpu=False)
-        return self._ocr_engine
+            # Keep the pipeline minimal: det+rec only. Doc orientation / UVDoc
+            # are heavy and unnecessary for typical lab-report photos.
+            try:
+                engine = PaddleOCR(
+                    lang="ch",
+                    device="cpu",
+                    use_doc_orientation_classify=False,
+                    use_doc_unwarping=False,
+                    use_textline_orientation=False,
+                )
+            except TypeError:
+                try:
+                    engine = PaddleOCR(lang="ch", use_angle_cls=False, use_gpu=False)
+                except TypeError:
+                    engine = PaddleOCR(lang="ch")
+            _SHARED_OCR_ENGINE = engine
+            return _SHARED_OCR_ENGINE
 
     def _extract_image_items_with_ai(self, raw_text: str) -> tuple[list[ReportItem], str | None]:
         try:
             ai_items = self.qwen_client.extract_report_items_from_ocr(raw_text)
             items = normalize_ai_report_items(ai_items)
         except RuntimeError as exc:
+            fallback = self.parse_items(raw_text)
+            if fallback:
+                return fallback, f"AI 指标筛选失败，已改用规则解析：{_safe_extraction_error(str(exc))}"
             return [], _safe_extraction_error(str(exc))
         if not items:
+            fallback = self.parse_items(raw_text)
+            if fallback:
+                return fallback, IMAGE_AI_NO_ITEMS_MESSAGE + "已改用规则解析。"
             return [], IMAGE_AI_NO_ITEMS_MESSAGE
         return items, None
 
@@ -395,59 +480,89 @@ class OcrLine:
 
 
 def _iter_paddle_lines(result: Any):
+    """Yield OCR lines from paddleocr 2.x / 3.x payloads without raising on odd shapes."""
+    if result is None:
+        return
+    try:
+        yield from _iter_paddle_lines_unsafe(result)
+    except (IndexError, TypeError, KeyError, ValueError, AttributeError):
+        return
+
+
+def _iter_paddle_lines_unsafe(result: Any):
     if hasattr(result, "json"):
         json_value = result.json
         if callable(json_value):
             json_value = json_value()
         if isinstance(json_value, dict):
-            yield from _iter_paddle_lines(json_value)
+            yield from _iter_paddle_lines_unsafe(json_value)
             return
     if isinstance(result, dict):
         nested_result = result.get("res")
         if isinstance(nested_result, dict):
-            yield from _iter_paddle_lines(nested_result)
+            yield from _iter_paddle_lines_unsafe(nested_result)
             return
-        texts = pick_dict_value(result, "rec_texts", "texts")
-        scores = pick_dict_value(result, "rec_scores", "scores")
-        boxes = pick_dict_value(result, "rec_polys", "dt_polys", "boxes")
-        if texts is None:
-            texts = []
-        if scores is None:
-            scores = []
-        if boxes is None:
-            boxes = []
-        for text, score, box in zip(texts, scores, boxes):
+        # Some paddlex versions nest OCR fields under "data".
+        nested_data = result.get("data")
+        if isinstance(nested_data, (dict, list)):
+            yield from _iter_paddle_lines_unsafe(nested_data)
+            return
+        texts = _as_sequence(pick_dict_value(result, "rec_texts", "texts", "rec_text"))
+        scores = _as_sequence(pick_dict_value(result, "rec_scores", "scores", "rec_score"))
+        boxes = _as_sequence(pick_dict_value(result, "rec_polys", "dt_polys", "boxes", "rec_boxes"))
+        if not texts:
+            return
+        for index, text in enumerate(texts):
             normalized_text = clean_text(str(text))
-            if normalized_text:
-                yield OcrLine(
-                    text=normalized_text,
-                    confidence=normalize_confidence(score),
-                    box=normalize_box(box),
-                )
+            if not normalized_text:
+                continue
+            score = scores[index] if index < len(scores) else 1.0
+            box = boxes[index] if index < len(boxes) else None
+            yield OcrLine(
+                text=normalized_text,
+                confidence=normalize_confidence(score),
+                box=normalize_box(box),
+            )
         return
     if isinstance(result, list):
         if is_legacy_paddle_line(result):
-            text = clean_text(str(result[1][0]))
-            if text:
-                yield OcrLine(
-                    text=text,
-                    confidence=normalize_confidence(result[1][1]),
-                    box=normalize_box(result[0]),
-                )
+            yield from _yield_legacy_paddle_line(result)
             return
         for item in result:
-            yield from _iter_paddle_lines(item)
-    elif isinstance(result, tuple):
+            yield from _iter_paddle_lines_unsafe(item)
+        return
+    if isinstance(result, tuple):
         if is_legacy_paddle_line(result):
-            text = clean_text(str(result[1][0]))
-            if text:
-                yield OcrLine(
-                    text=text,
-                    confidence=normalize_confidence(result[1][1]),
-                    box=normalize_box(result[0]),
-                )
+            yield from _yield_legacy_paddle_line(result)
             return
-        yield from _iter_paddle_lines(list(result))
+        yield from _iter_paddle_lines_unsafe(list(result))
+
+
+def _as_sequence(value: Any) -> list[Any]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value]
+    if hasattr(value, "tolist"):
+        try:
+            value = value.tolist()
+        except Exception:
+            return []
+    if isinstance(value, (list, tuple)):
+        return list(value)
+    return []
+
+
+def _yield_legacy_paddle_line(result: Any):
+    try:
+        payload = result[1]
+        text = clean_text(str(payload[0]))
+        if not text:
+            return
+        confidence = normalize_confidence(payload[1] if len(payload) > 1 else 1.0)
+        yield OcrLine(text=text, confidence=confidence, box=normalize_box(result[0]))
+    except (IndexError, TypeError, KeyError, ValueError):
+        return
 
 
 def pick_dict_value(data: dict[str, Any], *keys: str) -> Any:
@@ -461,7 +576,7 @@ def is_legacy_paddle_line(value: Any) -> bool:
     if not isinstance(value, (list, tuple)) or len(value) != 2:
         return False
     payload = value[1]
-    return isinstance(payload, (list, tuple)) and len(payload) >= 2 and isinstance(payload[0], str)
+    return isinstance(payload, (list, tuple)) and len(payload) >= 1 and isinstance(payload[0], str)
 
 
 def normalize_confidence(value: Any) -> float:
@@ -477,9 +592,26 @@ def normalize_box(box: Any) -> list[list[float]]:
     if box is None:
         return zero_box()
     if hasattr(box, "tolist"):
-        box = box.tolist()
+        try:
+            box = box.tolist()
+        except Exception:
+            return zero_box()
     points: list[list[float]] = []
-    for point in box:
+    # Flat [x1,y1,x2,y2,...] boxes from some paddlex versions.
+    if isinstance(box, (list, tuple)) and box and all(isinstance(item, (int, float)) for item in box):
+        numbers = [float(item) for item in box]
+        if len(numbers) >= 8:
+            points = [
+                [numbers[0], numbers[1]],
+                [numbers[2], numbers[3]],
+                [numbers[4], numbers[5]],
+                [numbers[6], numbers[7]],
+            ]
+            return points
+        if len(numbers) >= 4:
+            x1, y1, x2, y2 = numbers[0], numbers[1], numbers[2], numbers[3]
+            return [[x1, y1], [x2, y1], [x2, y2], [x1, y2]]
+    for point in box if isinstance(box, (list, tuple)) else []:
         if isinstance(point, (list, tuple)) and len(point) >= 2:
             try:
                 points.append([float(point[0]), float(point[1])])
@@ -495,12 +627,16 @@ def zero_box() -> list[list[float]]:
 
 
 def build_ocr_raw_text(lines: list[OcrLine]) -> str:
+    if not lines:
+        return ""
     rows = group_ocr_rows(lines)
     row_text = [" ".join(line.text for line in row if line.text).strip() for row in rows]
     return clean_text("\n".join(text for text in row_text if text))
 
 
 def group_ocr_rows(lines: list[OcrLine]) -> list[list[OcrLine]]:
+    if not lines:
+        return []
     ordered = sorted(lines, key=lambda line: (box_top(line.box), box_left(line.box)))
     rows: list[list[OcrLine]] = []
     for line in ordered:
@@ -513,24 +649,34 @@ def group_ocr_rows(lines: list[OcrLine]) -> list[list[OcrLine]]:
 
 
 def row_tolerance(lines: list[OcrLine]) -> float:
+    if not lines:
+        return 12.0
     heights = [max(1.0, box_bottom(line.box) - box_top(line.box)) for line in lines]
     average_height = sum(heights) / len(heights) if heights else 12.0
     return max(8.0, average_height * 0.6)
 
 
 def average_center_y(lines: list[OcrLine]) -> float:
+    if not lines:
+        return 0.0
     return sum(box_center_y(line.box) for line in lines) / len(lines)
 
 
 def box_left(box: list[list[float]]) -> float:
+    if not box:
+        return 0.0
     return min(point[0] for point in box)
 
 
 def box_top(box: list[list[float]]) -> float:
+    if not box:
+        return 0.0
     return min(point[1] for point in box)
 
 
 def box_bottom(box: list[list[float]]) -> float:
+    if not box:
+        return 0.0
     return max(point[1] for point in box)
 
 

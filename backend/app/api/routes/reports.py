@@ -1,6 +1,7 @@
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile, status
+from starlette.concurrency import run_in_threadpool
 
 from app.api.deps import get_current_user, get_report_service
 from app.core.responses import ApiResponse, ok
@@ -26,8 +27,15 @@ async def analyze_report(
     report_type: ReportType = Form("other"),
 ) -> ApiResponse[ReportData]:
     content = await file.read()
-    return ok(service.analyze(current_user["id"], file.filename or "report", report_type, content))
-
+    # OCR + model init is CPU-heavy; keep it off the event loop so the UI stays responsive.
+    report = await run_in_threadpool(
+        service.analyze,
+        current_user["id"],
+        file.filename or "report",
+        report_type,
+        content,
+    )
+    return ok(report)
 
 @router.get("/{report_id}", response_model=ApiResponse[ReportData])
 def get_report(

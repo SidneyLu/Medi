@@ -19,6 +19,39 @@ function withoutChinesePeriods(text: string) {
   return text.replace(/。/g, "");
 }
 
+type SummaryBlock = { title?: string; body: string };
+
+/** Split summary text on 【小节标题】 markers for readable sections. */
+function splitSummaryBlocks(raw: string): SummaryBlock[] {
+  const text = withoutChinesePeriods(raw).trim();
+  if (!text) return [];
+
+  const parts = text.split(/(?=【[^】]+】)/).map((part) => part.trim()).filter(Boolean);
+  if (parts.length <= 1 && !/^【[^】]+】/.test(text)) {
+    return [{ body: text }];
+  }
+
+  return parts.map((part) => {
+    const match = part.match(/^【([^】]+)】\s*([\s\S]*)$/);
+    if (!match) return { body: part };
+    return { title: match[1], body: match[2].trim() };
+  });
+}
+
+function formatSectionBody(body: string) {
+  const lines = body
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length <= 1) {
+    // Soft-wrap numbered items like "1. … 2. …" when the model returns one line.
+    const numbered = body.split(/(?=(?:^|\s)\d+[\.、]\s*)/).map((item) => item.trim()).filter(Boolean);
+    if (numbered.length > 1) return numbered;
+    return body ? [body] : [];
+  }
+  return lines;
+}
+
 export default function ReportResultPage() {
   const params = useParams<{ id: string }>();
   const report = useQuery({ queryKey: ["report", params.id], queryFn: () => api.getReport(params.id) });
@@ -78,16 +111,20 @@ export default function ReportResultPage() {
             </div>
           </header>
           <div className="panel-pad">
-            <p className="report-summary">
-              {data.summary ? withoutChinesePeriods(data.summary) : "当前报告还没有生成摘要"}
-            </p>
-            <div className="tag-row" style={{ marginTop: 16 }}>
-              {data.profile_tags_used.map((tag) => (
-                <span className="tag neutral" key={tag}>
-                  {tag}
-                </span>
-              ))}
-            </div>
+            {data.summary ? (
+              <div className="report-summary">
+                {splitSummaryBlocks(data.summary).map((block, index) => (
+                  <section className="report-summary-block" key={`${block.title ?? "intro"}-${index}`}>
+                    {block.title && <h3>{block.title}</h3>}
+                    {formatSectionBody(block.body).map((paragraph, paragraphIndex) => (
+                      <p key={`${index}-${paragraphIndex}`}>{paragraph}</p>
+                    ))}
+                  </section>
+                ))}
+              </div>
+            ) : (
+              <p className="report-summary">当前报告还没有生成摘要</p>
+            )}
           </div>
         </section>
 

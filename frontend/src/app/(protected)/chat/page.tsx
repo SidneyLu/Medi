@@ -6,9 +6,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, FileText, Plus, Send } from "lucide-react";
 import { api } from "@/lib/api/client";
 import type { ConversationDetail } from "@/lib/api/types";
-import { PdfPreviewDrawer } from "@/components/pdf-preview-drawer";
 
-function MessageBubble({ message, onPreview }: { message: ConversationDetail["messages"][number]; onPreview: (chunkId: string) => void }) {
+function MessageBubble({ message }: { message: ConversationDetail["messages"][number] }) {
   const isUser = message.role === "user";
   return (
     <article className={`message ${isUser ? "user" : "assistant"}`}>
@@ -40,17 +39,17 @@ function MessageBubble({ message, onPreview }: { message: ConversationDetail["me
           {message.profile_tags_used.map((tag) => <span className="tag neutral" key={tag}>{tag}</span>)}
         </div>
       )}
-      {message.citations && (
+      {message.citations && message.citations.length > 0 && (
         <div className="citation-list">
           {message.citations.map((citation) => (
-            <button type="button" className="citation" onClick={() => onPreview(citation.chunk_id)} key={citation.chunk_id}>
+            <div className="citation citation-static" key={citation.chunk_id}>
               <FileText size={15} />
               <span>
                 <b>{citation.article_title}</b>
                 <br />
-                {citation.section_title} · 查看 PDF 原页
+                {citation.section_title}
               </span>
-            </button>
+            </div>
           ))}
         </div>
       )}
@@ -66,7 +65,6 @@ export default function ChatPage() {
   const [question, setQuestion] = useState("");
   const [useProfile, setUseProfile] = useState(true);
   const [useMemory, setUseMemory] = useState(true);
-  const [previewChunkId, setPreviewChunkId] = useState<string | null>(null);
   const hasProfile = Boolean(profile.data?.profile);
   const resolvedActiveId = conversations.data?.items.some((item) => item.conversation_id === activeId)
     ? activeId
@@ -137,7 +135,7 @@ export default function ChatPage() {
               <div className="message-stream">
                 {detail.data?.messages.length ? (
                   detail.data.messages.map((message) => (
-                    <MessageBubble key={message.message_id} message={message} onPreview={setPreviewChunkId} />
+                    <MessageBubble key={message.message_id} message={message} />
                   ))
                 ) : (
                   <div className="empty">
@@ -201,7 +199,6 @@ export default function ChatPage() {
           )}
         </section>
       </div>
-      {previewChunkId && <PdfPreviewDrawer key={previewChunkId} chunkId={previewChunkId} onClose={() => setPreviewChunkId(null)} />}
     </div>
   );
 }
