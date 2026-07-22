@@ -68,6 +68,10 @@ export default function OcrPage() {
     return null;
   }
 
+  const hasOnlyPlaceholder =
+    items.length > 0 &&
+    items.every((item) => !item.name.trim() || item.name.trim().toLowerCase() === "ocr pending");
+
   function changeItem(index: number, field: keyof ReportItem, value: string) {
     setItems((prev) =>
       prev.map((item, itemIndex) => {
@@ -107,11 +111,25 @@ export default function OcrPage() {
         <span>系统不会根据未确认的 OCR 数据生成解读。请逐项核对后继续。「保存核对结果」只把当前表格写入服务器，不会进入解读页</span>
       </div>
 
+      {(data.error_message || hasOnlyPlaceholder) && (
+        <div className="notice urgent" style={{ marginTop: 12 }}>
+          <AlertCircle size={18} />
+          <span>
+            {data.error_message ||
+              "自动识别未得到有效指标（常见原因：图片 OCR 依赖未安装，或 PDF 无可提取文字）。请手工填写下表后保存，或安装 paddleocr 后重新上传。"}
+          </span>
+        </div>
+      )}
+
       <section className="panel" style={{ marginTop: 18 }}>
         <header className="panel-head">
           <div>
             <h2>{data.file_name}</h2>
-            <p>识别到 {items.length} 项检验指标</p>
+            <p>
+              {hasOnlyPlaceholder
+                ? "尚未识别到有效指标，请手工填写或重新上传"
+                : `识别到 ${items.length} 项检验指标`}
+            </p>
           </div>
         </header>
         <div className="panel-pad table-wrap">

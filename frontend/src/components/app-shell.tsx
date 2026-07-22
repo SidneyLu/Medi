@@ -5,7 +5,8 @@ import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Activity, ClipboardPlus, FileText, House, MessageSquareText, ShieldCheck, UserRound } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, syncAccessTokenCookie } from "@/lib/api/client";
+import { api, setAccessToken, syncAccessTokenCookie } from "@/lib/api/client";
+import { ApiError } from "@/lib/api/types";
 
 const NAV = [
   { href: "/dashboard", label: "健康主页", crumb: "主页", icon: House },
@@ -28,7 +29,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     syncAccessTokenCookie();
   }, []);
 
-  const session = useQuery({ queryKey: ["session"], queryFn: api.getMe });
+  const session = useQuery({
+    queryKey: ["session"],
+    queryFn: api.getMe,
+    retry: (failureCount, error) => {
+      // Invalid/expired sessions should not keep the shell spinning.
+      if (error instanceof ApiError && (error.status === 401 || error.status === 403)) return false;
+      return failureCount < 1;
+    },
+  });
   const logout = useMutation({
     mutationFn: api.logout,
     onSuccess: () => {
@@ -38,11 +47,22 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   });
 
   useEffect(() => {
-    if (session.isError) router.replace("/login");
-  }, [router, session.isError]);
+    if (!session.isError) return;
+    // Clear stale token so middleware does not bounce /login -> /dashboard.
+    setAccessToken(null);
+    queryClient.clear();
+    router.replace("/login");
+  }, [queryClient, router, session.isError]);
 
   if (session.isLoading) return <div className="loading"><div className="spinner" /></div>;
-  if (session.isError || !session.data) return <div className="loading"><div className="spinner" /></div>;
+  if (session.isError || !session.data) {
+    return (
+      <div className="loading">
+        <div className="spinner" />
+        <p style={{ marginTop: 12, color: "var(--muted)" }}>登录已失效，正在前往登录页…</p>
+      </div>
+    );
+  }
 
   const user = session.data;
   const activeNav = NAV.find((entry) => isActive(pathname, entry.href));
