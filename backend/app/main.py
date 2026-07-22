@@ -5,6 +5,7 @@ from app.api.deps import get_application_repository, get_store
 from app.api.routes import auth, chat, content, health, knowledge, profile, reports
 from app.core.config import get_settings
 from app.core.responses import install_exception_handlers
+from app.services.report_indicator_extractor import warm_up_ocr_engine
 
 
 def create_app() -> FastAPI:
@@ -37,6 +38,8 @@ def create_app() -> FastAPI:
     def startup() -> None:
         get_application_repository().initialize()
         get_store().initialize()
+        # Load OCR models in the background so the first upload is less likely to time out.
+        warm_up_ocr_engine(background=True)
 
     return app
 

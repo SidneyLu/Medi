@@ -39,7 +39,10 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   let response: Response;
   try {
     response = await fetch(`${API}${path}`, { ...init, headers });
-  } catch {
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new ApiError(0, "aborted", "已取消请求");
+    }
     throw new ApiError(0, "network_error", "无法连接后端服务，请确认后端已启动且地址正确。");
   }
   let payload: ApiEnvelope<T> & { error?: { type: string } };
@@ -83,7 +86,12 @@ export const api = {
     }),
   getCitation: (chunkId: string) => request<CitationDetail>(`/content/citations/${chunkId}`),
   previewUrl: (documentId: string, pageNumber: number) => `${API}/content/documents/${documentId}/pages/${pageNumber}/preview`,
-  uploadReport: (file: File, reportType: Report["report_type"]) => { const body = new FormData(); body.append("file", file); body.append("report_type", reportType); return request<Report>("/reports/analyze", { method: "POST", body }); },
+  uploadReport: (file: File, reportType: Report["report_type"], signal?: AbortSignal) => {
+    const body = new FormData();
+    body.append("file", file);
+    body.append("report_type", reportType);
+    return request<Report>("/reports/analyze", { method: "POST", body, signal });
+  },
   listReports: () => request<Paginated<Report>>("/reports"),
   getReport: (id: string) => request<Report>(`/reports/${id}`),
   updateReportItems: (id: string, items: ReportItem[]) => request<Report>(`/reports/${id}/items`, { method: "PATCH", body: JSON.stringify({ items }) }),
