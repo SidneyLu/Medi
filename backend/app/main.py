@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.deps import get_store
+from app.api.deps import get_application_repository, get_store
 from app.api.routes import auth, chat, content, health, knowledge, profile, reports
 from app.core.config import get_settings
 from app.core.responses import install_exception_handlers
@@ -35,6 +35,7 @@ def create_app() -> FastAPI:
 
     @app.on_event("startup")
     def startup() -> None:
+        get_application_repository().initialize()
         get_store().initialize()
 
     return app

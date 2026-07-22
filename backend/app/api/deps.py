@@ -6,6 +6,7 @@ from fastapi import Depends, Header
 from app.core.config import get_settings
 from app.core.responses import AppError
 from app.core.security import decode_session_token
+from app.services.application_repository import ApplicationRepository
 from app.services.auth_service import AuthService
 from app.services.knowledge_service import KnowledgeService
 from app.services.profile_service import ProfileService
@@ -22,28 +23,44 @@ def get_store() -> Store:
     return store
 
 
-def get_auth_service(store: Annotated[Store, Depends(get_store)]) -> AuthService:
-    return AuthService(store)
+@lru_cache
+def get_application_repository() -> ApplicationRepository:
+    settings = get_settings()
+    if not settings.database_url:
+        raise RuntimeError("DATABASE_URL is required for Medi application data")
+    repository = ApplicationRepository(settings.database_url)
+    repository.initialize()
+    return repository
 
 
-def get_profile_service(store: Annotated[Store, Depends(get_store)]) -> ProfileService:
-    return ProfileService(store)
+def get_auth_service(repository: Annotated[ApplicationRepository, Depends(get_application_repository)]) -> AuthService:
+    return AuthService(repository)
+
+
+def get_profile_service(repository: Annotated[ApplicationRepository, Depends(get_application_repository)]) -> ProfileService:
+    return ProfileService(repository)
 
 
 def get_knowledge_service(store: Annotated[Store, Depends(get_store)]) -> KnowledgeService:
     return KnowledgeService(store)
 
 
-def get_rag_service(store: Annotated[Store, Depends(get_store)]) -> RagService:
-    return RagService(store)
+def get_rag_service(
+    repository: Annotated[ApplicationRepository, Depends(get_application_repository)],
+    store: Annotated[Store, Depends(get_store)],
+) -> RagService:
+    return RagService(repository, store)
 
 
-def get_report_service(store: Annotated[Store, Depends(get_store)]) -> ReportService:
-    return ReportService(store)
+def get_report_service(
+    repository: Annotated[ApplicationRepository, Depends(get_application_repository)],
+    store: Annotated[Store, Depends(get_store)],
+) -> ReportService:
+    return ReportService(repository, store)
 
 
 def get_current_user(
-    store: Annotated[Store, Depends(get_store)],
+    repository: Annotated[ApplicationRepository, Depends(get_application_repository)],
     authorization: Annotated[str | None, Header(alias="Authorization")] = None,
 ) -> dict[str, Any]:
     if not authorization or not authorization.lower().startswith("bearer "):
@@ -58,7 +75,7 @@ def get_current_user(
     if not user_id:
         raise AppError(status_code=401, code=40102, message="Invalid session", error_type="request_failed")
 
-    user = store.get_user_by_id(user_id)
+    user = repository.get_user_by_id(user_id)
     if user is None:
         raise AppError(status_code=401, code=40103, message="User no longer exists", error_type="request_failed")
     return user

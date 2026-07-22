@@ -41,11 +41,12 @@ class QwenClient:
         question: str,
         profile_tags: list[str],
         chunks: list[KnowledgeChunkData],
+        profile_keywords: list[str] | None = None,
     ) -> dict:
         settings = get_settings()
         if not settings.qwen_api_key:
-            return self._generate_placeholder(question, profile_tags, chunks)
-        return self._generate_with_qwen(question, profile_tags, chunks, settings)
+            return self._generate_placeholder(question, profile_tags, chunks, profile_keywords or [])
+        return self._generate_with_qwen(question, profile_tags, chunks, profile_keywords or [], settings)
 
     def generate_answer_from_pdf_pages(
         self,
@@ -88,13 +89,14 @@ class QwenClient:
         profile_tags: list[str],
         items: list[dict],
         knowledge_context: list[dict],
+        profile_keywords: list[str] | None = None,
     ) -> dict:
         settings = get_settings()
         if not settings.qwen_api_key:
             raise RuntimeError("未配置体检报告综合分析模型 API Key。")
         payload = {
             "model": settings.qwen_model,
-            "messages": self._build_report_analysis_messages(profile_tags, items, knowledge_context),
+            "messages": self._build_report_analysis_messages(profile_tags, profile_keywords or [], items, knowledge_context),
             "temperature": 0.2,
             "max_tokens": 1600,
             "enable_thinking": False,
@@ -113,6 +115,7 @@ class QwenClient:
         question: str,
         profile_tags: list[str],
         chunks: list[KnowledgeChunkData],
+        profile_keywords: list[str] | None = None,
     ) -> dict:
         first_chunk = chunks[0]
         answer = (
@@ -127,7 +130,7 @@ class QwenClient:
             "可结合下方引用的 MSD 原文页面了解相关健康知识。",
             "如果症状持续、加重或影响正常生活，请及时咨询医生。",
         ]
-        if profile_tags:
+        if profile_tags or profile_keywords:
             suggestions.insert(2, "可结合年龄、妊娠状态、过敏史及慢性疾病等个人情况进一步评估。")
         return {"answer": answer, "suggestions": suggestions, "risk_level": "low"}
 
@@ -158,11 +161,12 @@ class QwenClient:
         question: str,
         profile_tags: list[str],
         chunks: list[KnowledgeChunkData],
+        profile_keywords: list[str],
         settings,
     ) -> dict:
         payload = {
             "model": settings.qwen_model,
-            "messages": self._build_messages(question, profile_tags, chunks[:5]),
+            "messages": self._build_messages(question, profile_tags, profile_keywords, chunks[:5]),
             "temperature": 0.2,
             "max_tokens": 800,
             "enable_thinking": False,
@@ -229,6 +233,7 @@ class QwenClient:
         self,
         question: str,
         profile_tags: list[str],
+        profile_keywords: list[str],
         chunks: list[KnowledgeChunkData],
     ) -> list[dict]:
         system_prompt = (
@@ -250,7 +255,7 @@ class QwenClient:
         )
         user_prompt = (
             f"用户问题：{question}\n\n"
-            f"{self._format_profile_tags(profile_tags)}"
+            f"{self._format_profile_context(profile_tags, profile_keywords)}"
             "请基于以下资料回答。\n\n"
             f"{self._format_chunks(chunks)}\n\n"
             "请严格返回以下JSON格式：\n"
@@ -334,6 +339,7 @@ class QwenClient:
     @staticmethod
     def _build_report_analysis_messages(
         profile_tags: list[str],
+        profile_keywords: list[str],
         items: list[dict],
         knowledge_context: list[dict],
     ) -> list[dict]:
@@ -352,7 +358,8 @@ class QwenClient:
         )
         user_prompt = (
             "请基于以下已确认体检指标、用户画像标签和MSD资料，生成一份自然、完整的中文体检综合分析。\n\n"
-            f"用户画像标签：{profile_tags or []}\n\n"
+            f"用户画像标签：{profile_tags or []}\n"
+            f"用户画像关键词：{profile_keywords or []}\n\n"
             f"已确认指标JSON：{json.dumps(items, ensure_ascii=False)}\n\n"
             f"MSD资料JSON：{json.dumps(knowledge_context, ensure_ascii=False)}\n\n"
             "请严格返回JSON格式："
@@ -366,13 +373,21 @@ class QwenClient:
         ]
 
     @staticmethod
-    def _format_profile_tags(profile_tags: list[str]) -> str:
-        if not profile_tags:
+    def _format_profile_context(profile_tags: list[str], profile_keywords: list[str]) -> str:
+        if not profile_tags and not profile_keywords:
             return ""
         tags = "、".join(str(tag) for tag in profile_tags if str(tag).strip())
-        if not tags:
-            return ""
-        return f"用户画像标签：{tags}\n\n"
+        keywords = "、".join(str(keyword) for keyword in profile_keywords if str(keyword).strip())
+        lines: list[str] = []
+        if tags:
+            lines.append(f"用户画像标签：{tags}")
+        if keywords:
+            lines.append(f"用户画像关键词：{keywords}")
+        return "\n".join(lines) + "\n\n"
+
+    @staticmethod
+    def _format_profile_tags(profile_tags: list[str]) -> str:
+        return QwenClient._format_profile_context(profile_tags, [])
 
     @staticmethod
     def _format_chunks(chunks: list[KnowledgeChunkData]) -> str:

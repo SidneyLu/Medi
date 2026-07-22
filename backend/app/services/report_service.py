@@ -46,7 +46,9 @@ class ReportService:
         saved_path = user_upload_dir / safe_file_name
         saved_path.write_bytes(content)
 
-        profile_tags = self.profile_service.get_profile(user_id).tags
+        profile_data = self.profile_service.get_profile(user_id)
+        profile_tags = profile_data.tags
+        profile_keywords = [item.keyword for item in profile_data.keywords]
         raw_text, extracted_items, extraction_error = self.extractor.extract(saved_path, content)
         is_image_report = suffix in {".jpg", ".jpeg", ".png"}
         if is_image_report:
@@ -76,6 +78,7 @@ class ReportService:
                 "file_name": file_name,
                 "report_type": report_type,
                 "items": len(items),
+                "profile_keywords": profile_keywords,
                 "extraction_error": extraction_error,
             },
         )
@@ -128,12 +131,15 @@ class ReportService:
         target_items = _select_knowledge_targets(normalized_items)
         knowledge_context, citations_by_item_id = self._build_report_knowledge_context(target_items)
         analysis_items = [_to_analysis_item(item) for item in normalized_items]
+        profile_data = self.profile_service.get_profile(user_id)
         profile_tags = report.get("profile_tags_used", [])
+        profile_keywords = [item.keyword for item in profile_data.keywords]
         ai_used = bool(self.settings.qwen_api_key)
         ai_success = False
         try:
             analysis = self.qwen_client.generate_report_analysis(
                 profile_tags=profile_tags,
+                profile_keywords=profile_keywords,
                 items=analysis_items,
                 knowledge_context=knowledge_context,
             )
@@ -167,6 +173,7 @@ class ReportService:
                 "ai_used": ai_used,
                 "ai_success": ai_success,
                 "risk_level": risk_level,
+                "profile_keywords": profile_keywords,
             },
         )
         return self._to_report_data(updated)

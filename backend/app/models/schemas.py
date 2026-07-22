@@ -4,6 +4,11 @@ from pydantic import BaseModel, Field, field_validator
 
 SexAtBirth = Literal["female", "male", "other", "unknown"]
 PregnancyStatus = Literal["not_applicable", "pregnant", "postpartum", "unknown"]
+SmokingStatus = Literal["never", "former", "current", "unknown"]
+AlcoholUse = Literal["none", "occasional", "frequent", "unknown"]
+ExerciseLevel = Literal["low", "moderate", "high", "unknown"]
+SleepQuality = Literal["good", "fair", "poor", "unknown"]
+DietPattern = Literal["balanced", "high_salt", "high_sugar", "high_fat", "irregular", "unknown"]
 ReportType = Literal["physical_exam", "blood_test", "other"]
 RiskLevel = Literal["low", "medium", "high", "unknown"]
 ReportStatus = Literal["uploaded", "ocr_processing", "needs_confirmation", "interpreting", "completed", "failed"]
@@ -59,11 +64,26 @@ class ProfilePayload(BaseModel):
     chronic_conditions: list[str] = Field(default_factory=list)
     allergies: list[str] = Field(default_factory=list)
     current_medications: list[str] = Field(default_factory=list)
+    family_history: list[str] = Field(default_factory=list)
+    recent_symptoms: list[str] = Field(default_factory=list)
+    smoking_status: SmokingStatus = "unknown"
+    alcohol_use: AlcoholUse = "unknown"
+    exercise_level: ExerciseLevel = "unknown"
+    sleep_quality: SleepQuality = "unknown"
+    diet_pattern: DietPattern = "unknown"
+
+
+class ProfileKeyword(BaseModel):
+    keyword: str
+    category: str
+    score: float
+    source: str
 
 
 class ProfileData(BaseModel):
     profile: ProfilePayload | None
     tags: list[str]
+    keywords: list[ProfileKeyword] = Field(default_factory=list)
 
 
 class Citation(BaseModel):

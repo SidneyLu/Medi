@@ -69,8 +69,8 @@ class KnowledgeService:
 
         try:
             return self._local_vector_search(query_text, tags, limit, category)
-        except Exception as exc:
-            raise RuntimeError(f"local vector knowledge search failed: {exc}") from exc
+        except Exception:
+            return self._legacy_search(query_text, tags, limit, category)
 
     def _local_vector_search(
         self,

@@ -3,6 +3,8 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 
 @dataclass(frozen=True)
 class Settings:
@@ -36,6 +38,7 @@ class Settings:
 @lru_cache
 def get_settings() -> Settings:
     root_dir = Path(__file__).resolve().parents[2]
+    load_dotenv(root_dir / ".env")
     database_path = Path(os.getenv("MEDI_SQLITE_PATH", root_dir / "storage" / "medi.sqlite3"))
     upload_dir = Path(os.getenv("UPLOAD_DIR", root_dir / "storage" / "uploads"))
     knowledge_pdf_path = Path(os.getenv("KNOWLEDGE_PDF_PATH", root_dir.parent / "默克家庭医学手册.pdf"))

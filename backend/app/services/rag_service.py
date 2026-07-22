@@ -9,10 +9,11 @@ from app.models.schemas import (
     ConversationDetail,
     ConversationListData,
 )
+from app.services.application_repository import ApplicationRepository, utc_now
 from app.services.knowledge_service import KnowledgeService
 from app.services.profile_service import ProfileService
 from app.services.qwen_client import QwenClient
-from app.services.storage import Store, utc_now
+from app.services.storage import Store
 
 RED_FLAG_KEYWORDS = [
     "chest pain",
@@ -38,9 +39,10 @@ RED_FLAG_KEYWORDS = [
 
 
 class RagService:
-    def __init__(self, store: Store) -> None:
+    def __init__(self, repository: ApplicationRepository, store: Store) -> None:
+        self.repository = repository
         self.store = store
-        self.profile_service = ProfileService(store)
+        self.profile_service = ProfileService(repository)
         self.knowledge_service = KnowledgeService(store)
         self.qwen_client = QwenClient()
 
@@ -52,21 +54,21 @@ class RagService:
                 updated_at=item["updated_at"],
                 preview=item["preview"],
             )
-            for item in self.store.list_conversations(user_id)
+            for item in self.repository.list_conversations(user_id)
         ]
         return ConversationListData(items=conversations, next_cursor=None)
 
     def create_conversation(self, user_id: str) -> ConversationDetail:
-        return self._to_detail(self.store.create_conversation(user_id))
+        return self._to_detail(self.repository.create_conversation(user_id))
 
     def get_conversation(self, user_id: str, conversation_id: str) -> ConversationDetail:
-        conversation = self.store.get_conversation(user_id, conversation_id)
+        conversation = self.repository.get_conversation(user_id, conversation_id)
         if conversation is None:
             raise AppError(status_code=404, code=40401, message="Conversation not found", error_type="not_found")
         return self._to_detail(conversation)
 
     def send_message(self, user_id: str, conversation_id: str, payload: ChatQueryRequest) -> ChatMessage:
-        conversation = self.store.get_conversation(user_id, conversation_id)
+        conversation = self.repository.get_conversation(user_id, conversation_id)
         if conversation is None:
             raise AppError(status_code=404, code=40401, message="Conversation not found", error_type="not_found")
 
@@ -84,8 +86,8 @@ class RagService:
         conversation["title"] = payload.question[:24] or "Health chat"
         conversation["preview"] = assistant_message.content[:80]
         conversation["updated_at"] = assistant_message.created_at
-        self.store.update_conversation(user_id, conversation)
-        self.store.add_audit_log(
+        self.repository.update_conversation(user_id, conversation)
+        self.repository.add_audit_log(
             user_id,
             "chat.message",
             {
@@ -99,8 +101,11 @@ class RagService:
 
     def _answer(self, user_id: str, payload: ChatQueryRequest) -> ChatMessage:
         profile_tags: list[str] = []
+        profile_keywords: list[str] = []
         if payload.use_profile:
-            profile_tags = self.profile_service.get_profile(user_id).tags
+            profile_data = self.profile_service.get_profile(user_id)
+            profile_tags = profile_data.tags
+            profile_keywords = [item.keyword for item in profile_data.keywords]
 
         risk_level = "high" if _has_red_flag(payload.question) else "unknown"
         chunks = self.knowledge_service.search(payload.question, tags=profile_tags, limit=5)
@@ -139,7 +144,7 @@ class RagService:
             risk_level = "unknown"
             evidence_available = False
         else:
-            generated = self.qwen_client.generate_answer(payload.question, profile_tags, chunks)
+            generated = self.qwen_client.generate_answer(payload.question, profile_tags, chunks, profile_keywords)
             content = generated["answer"]
             suggestions = generated["suggestions"]
             risk_level = generated["risk_level"]
