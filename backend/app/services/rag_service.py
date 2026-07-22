@@ -133,9 +133,11 @@ class RagService:
     def _answer(self, user_id: str, payload: ChatQueryRequest, history: list[dict]) -> ChatMessage:
         profile_tags: list[str] = []
         profile_context = ""
+        profile_keywords: list[str] = []
         if payload.use_profile:
             profile_data = self.profile_service.get_profile(user_id)
             profile_tags = list(profile_data.tags)
+            profile_keywords = [item.keyword for item in profile_data.keywords]
             if profile_data.profile is not None:
                 profile_context = format_profile_context(profile_data.profile.model_dump())
 
@@ -187,6 +189,7 @@ class RagService:
                 chunks,
                 profile_context=profile_context,
                 history=history,
+                profile_keywords=profile_keywords,
             )
             content = generated["answer"]
             suggestions = generated["suggestions"]
