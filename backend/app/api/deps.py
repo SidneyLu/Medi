@@ -9,6 +9,7 @@ from app.core.security import decode_session_token
 from app.services.application_repository import ApplicationRepository
 from app.services.auth_service import AuthService
 from app.services.knowledge_service import KnowledgeService
+from app.services.msd_web_service import MsdWebService
 from app.services.profile_service import ProfileService
 from app.services.rag_service import RagService
 from app.services.report_service import ReportService
@@ -43,6 +44,10 @@ def get_profile_service(repository: Annotated[ApplicationRepository, Depends(get
 
 def get_knowledge_service(store: Annotated[Store, Depends(get_store)]) -> KnowledgeService:
     return KnowledgeService(store)
+
+
+def get_msd_web_service() -> MsdWebService:
+    return MsdWebService()
 
 
 def get_rag_service(

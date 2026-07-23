@@ -22,7 +22,113 @@ export const handlers = [
   http.post("*/api/v1/chat/conversations", () => { const id = crypto.randomUUID(); const conversation: ConversationDetail = { conversation_id: id, title: "新的健康咨询", preview: "", updated_at: now, messages: [] }; conversations = [conversation, ...conversations]; return envelope(conversation, 201); }),
   http.get("*/api/v1/chat/conversations/:id", ({ params }) => { const conversation = conversations.find((item) => item.conversation_id === params.id); return conversation ? envelope(conversation) : failure(404, "会话不存在", "not_found"); }),
   http.delete("*/api/v1/chat/conversations/:id", ({ params }) => { conversations = conversations.filter((item) => item.conversation_id !== params.id); return envelope(null); }),
-  http.post("*/api/v1/chat/conversations/:id/messages", async ({ params, request }) => { const conversation = conversations.find((item) => item.conversation_id === params.id); if (!conversation) return failure(404, "会话不存在", "not_found"); const body = await request.json() as { question: string; use_profile: boolean }; const userMessage: ChatMessage = { message_id: crypto.randomUUID(), role: "user", content: body.question, created_at: now }; const highRisk = /胸痛|呼吸困难|意识不清|昏迷|大出血/.test(body.question); const answer: ChatMessage = { message_id: crypto.randomUUID(), role: "assistant", content: highRisk ? "你描述的内容可能涉及紧急情况。请不要等待线上回复或自行处理，应立即联系当地急救服务或前往急诊。" : "我只能根据已检索到的默沙东医学知识提供健康科普，不能据此诊断。请关注症状的持续时间、诱因及伴随表现；若症状加重或出现警示信号，请及时线下就医。", created_at: now, risk_level: highRisk ? "high" : "low", suggestions: highRisk ? ["立即联系急救服务", "如可行，请让身边的人陪同"] : ["记录症状发生时间和持续时长", "准备既往检查和用药信息以便就医时说明"], profile_tags_used: body.use_profile ? ["age_adult", "sex_female"] : [], evidence_available: true, citations: [{ chunk_id: "msd-dizziness-1", article_title: highRisk ? "何时应寻求医疗帮助" : "头晕和眩晕", section_title: "何时就医", source_url: "https://www.msdmanuals.cn/home" }] }; conversation.messages.push(userMessage, answer); conversation.title = body.question.slice(0, 20); conversation.preview = answer.content.slice(0, 32); return envelope(answer); }),
+  http.post("*/api/v1/chat/conversations/:id/messages", async ({ params, request }) => { const conversation = conversations.find((item) => item.conversation_id === params.id); if (!conversation) return failure(404, "会话不存在", "not_found"); const body = await request.json() as { question: string; use_profile: boolean }; const userMessage: ChatMessage = { message_id: crypto.randomUUID(), role: "user", content: body.question, created_at: now }; const highRisk = /胸痛|呼吸困难|意识不清|昏迷|大出血/.test(body.question); const answer: ChatMessage = { message_id: crypto.randomUUID(), role: "assistant", content: highRisk ? "你描述的内容可能涉及紧急情况。请不要等待线上回复或自行处理，应立即联系当地急救服务或前往急诊。" : "我只能根据已检索到的默沙东医学知识提供健康科普，不能据此诊断。请关注症状的持续时间、诱因及伴随表现；若症状加重或出现警示信号，请及时线下就医。详见 [头晕和眩晕](https://www.msdmanuals.cn/home/brain-spinal-cord-and-nerve-disorders/symptoms-of-brain-spinal-cord-and-nerve-disorders/dizziness-or-vertigo)。", created_at: now, risk_level: highRisk ? "high" : "low", suggestions: highRisk ? ["立即联系急救服务", "如可行，请让身边的人陪同"] : ["记录症状发生时间和持续时长", "准备既往检查和用药信息以便就医时说明"], profile_tags_used: body.use_profile ? ["age_adult", "sex_female"] : [], evidence_available: true, citations: [{ chunk_id: "msd-dizziness-1", article_title: highRisk ? "何时应寻求医疗帮助" : "头晕和眩晕", section_title: "何时就医", source_url: "https://www.msdmanuals.cn/home/brain-spinal-cord-and-nerve-disorders/symptoms-of-brain-spinal-cord-and-nerve-disorders/dizziness-or-vertigo" }] }; conversation.messages.push(userMessage, answer); conversation.title = body.question.slice(0, 20); conversation.preview = answer.content.slice(0, 32); return envelope(answer); }),
+  http.post("*/api/v1/chat/conversations/:id/messages/prepare", async ({ params, request }) => {
+    const conversation = conversations.find((item) => item.conversation_id === params.id);
+    if (!conversation) return failure(404, "会话不存在", "not_found");
+    const body = await request.json() as { question: string; use_profile: boolean; use_memory?: boolean };
+    const highRisk = /胸痛|呼吸困难|意识不清|昏迷|大出血/.test(body.question);
+    const noEvidence = /编造|无关|火星|量子纠缠/.test(body.question);
+    const history = body.use_memory === false
+      ? []
+      : conversation.messages.slice(-6).map((message) => ({ role: message.role, content: message.content }));
+    const chunks = noEvidence || highRisk
+      ? []
+      : [{
+          chunk_id: "msd-dizziness-1",
+          article_title: "头晕和眩晕",
+          section_title: "常见原因",
+          source_url: "https://www.msdmanuals.cn/home/brain-spinal-cord-and-nerve-disorders/symptoms-of-brain-spinal-cord-and-nerve-disorders/dizziness-or-vertigo",
+          category: "symptoms",
+          content: "头晕可能表现为头昏、失去平衡感或周围环境旋转。体位变化相关头晕常见于直立性低血压等情形；伴随警示症状时需要及时寻求医疗帮助。",
+          score: 0.92,
+          tags: ["source:msd"],
+        }];
+    let refusal_content: string | null = null;
+    let suggestions: string[] | null = null;
+    let risk_level: "high" | "low" | "medium" | "unknown" = "unknown";
+    let evidence_available = chunks.length > 0;
+    if (highRisk) {
+      risk_level = "high";
+      refusal_content = "你描述的内容可能涉及紧急情况。请不要等待线上回复或自行处理，应立即联系当地急救服务或前往急诊。";
+      suggestions = ["立即联系急救服务", "如可行，请让身边的人陪同"];
+      evidence_available = false;
+    } else if (noEvidence) {
+      refusal_content = "未检索到足够相关的授权 MSD 知识块，因此不会编造医学解释。请补充症状细节或线下咨询合格医生。";
+      suggestions = ["补充症状出现时间、持续时长和伴随症状。"];
+      evidence_available = false;
+    }
+    return envelope({
+      question: body.question,
+      retrieval_query: body.question,
+      chunks,
+      profile_context: body.use_profile ? "成人女性，青霉素过敏，过敏性鼻炎" : "",
+      profile_tags: body.use_profile ? ["age_adult", "sex_female", "allergy_penicillin"] : [],
+      profile_keywords: body.use_profile ? demoKeywords.map((item) => item.keyword) : [],
+      history,
+      risk_level,
+      evidence_available,
+      refusal_content,
+      fixed_content: refusal_content,
+      suggestions,
+      profile_tags_used: body.use_profile ? ["age_adult", "sex_female"] : [],
+    });
+  }),
+  http.post("*/api/v1/chat/conversations/:id/messages/persist", async ({ params, request }) => {
+    const conversation = conversations.find((item) => item.conversation_id === params.id);
+    if (!conversation) return failure(404, "会话不存在", "not_found");
+    const body = await request.json() as {
+      question: string;
+      content: string;
+      risk_level?: ChatMessage["risk_level"];
+      suggestions?: string[];
+      evidence_available?: boolean;
+      profile_tags_used?: string[];
+      citations?: ChatMessage["citations"];
+    };
+    const userMessage: ChatMessage = { message_id: crypto.randomUUID(), role: "user", content: body.question, created_at: now };
+    const answer: ChatMessage = {
+      message_id: crypto.randomUUID(),
+      role: "assistant",
+      content: body.content,
+      created_at: now,
+      risk_level: body.risk_level,
+      suggestions: body.suggestions,
+      profile_tags_used: body.profile_tags_used,
+      evidence_available: body.evidence_available,
+      citations: body.citations,
+    };
+    conversation.messages.push(userMessage, answer);
+    conversation.title = body.question.slice(0, 20);
+    conversation.preview = answer.content.slice(0, 32);
+    conversation.updated_at = now;
+    return envelope(answer);
+  }),
+  http.get("*/api/v1/knowledge/msd/search", ({ request }) => {
+    const url = new URL(request.url);
+    const q = url.searchParams.get("q") || "";
+    return envelope({
+      query: q,
+      items: [{
+        title: "头晕和眩晕",
+        url: "https://www.msdmanuals.cn/home/brain-spinal-cord-and-nerve-disorders/symptoms-of-brain-spinal-cord-and-nerve-disorders/dizziness-or-vertigo",
+        snippet: "头晕可能表现为头昏、失去平衡感或周围环境旋转。",
+      }],
+    });
+  }),
+  http.get("*/api/v1/knowledge/msd/page", ({ request }) => {
+    const url = new URL(request.url);
+    const pageUrl = url.searchParams.get("url") || "";
+    if (!pageUrl || pageUrl.replace(/\/+$/, "") === "https://www.msdmanuals.cn/home") {
+      return failure(400, "URL must be an msdmanuals.cn /home topic path (not bare /home)", "validation_error");
+    }
+    return envelope({
+      title: "头晕和眩晕",
+      url: pageUrl,
+      summary: "头晕可能表现为头昏、失去平衡感或周围环境旋转。",
+      summary_or_sections: "头晕可能表现为头昏、失去平衡感或周围环境旋转。",
+    });
+  }),
   http.get("*/api/v1/content/citations/:id", ({ params }) => envelope({ chunk_id: String(params.id), document_id: "manual-demo", document_title: "默克家庭医学手册", section_title: "头晕和眩晕", heading_path: ["默克家庭医学手册", "症状", "头晕和眩晕"], page_start: 417, page_end: 418, page_count: 1582, source_excerpt: "头晕可能表现为头昏、失去平衡感或周围环境旋转。持续或伴随警示症状时需要及时寻求医疗帮助。", document_version: "30b2c00c2235", source_bboxes: [{ page: 417, bbox: [12, 28, 88, 51] }], preview_url: "/api/v1/content/documents/manual-demo/pages/417/preview" })),
   http.get("*/api/v1/content/documents/:id/pages/:page/preview", () => new HttpResponse(`<svg xmlns="http://www.w3.org/2000/svg" width="900" height="1260"><rect width="100%" height="100%" fill="#fffdf8"/><text x="80" y="105" font-family="Arial" font-size="25" fill="#142e35">默克家庭医学手册</text><line x1="80" y1="135" x2="820" y2="135" stroke="#9aaeb2"/><text x="80" y="205" font-family="Arial" font-size="32" font-weight="bold" fill="#172d34">头晕和眩晕</text><text x="80" y="270" font-family="Arial" font-size="19" fill="#344e56">头晕可能表现为头昏、失去平衡感，或感到</text><text x="80" y="304" font-family="Arial" font-size="19" fill="#344e56">周围环境旋转。症状持续或伴随警示症状时，</text><text x="80" y="338" font-family="Arial" font-size="19" fill="#344e56">应及时寻求医疗帮助。</text><line x1="80" y1="1110" x2="820" y2="1110" stroke="#d5dedf"/><text x="440" y="1160" font-family="Arial" font-size="16" fill="#667b80">417</text></svg>`, { headers: { "Content-Type": "image/svg+xml" } })),
   http.get("*/api/v1/reports", () => envelope({ items: reports, next_cursor: null })),

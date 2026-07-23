@@ -1,4 +1,21 @@
-import type { ApiEnvelope, AuthSession, ChatMessage, CitationDetail, Conversation, ConversationDetail, Paginated, Profile, ProfileResponse, Report, ReportItem, User } from "./types";
+import type {
+  ApiEnvelope,
+  AuthSession,
+  ChatMessage,
+  ChatPersistRequest,
+  ChatPrepareData,
+  CitationDetail,
+  Conversation,
+  ConversationDetail,
+  MsdPageData,
+  MsdSearchData,
+  Paginated,
+  Profile,
+  ProfileResponse,
+  Report,
+  ReportItem,
+  User,
+} from "./types";
 import { ApiError } from "./types";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
@@ -84,6 +101,22 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ question, use_profile, use_memory }),
     }),
+  prepareMessage: (id: string, question: string, use_profile: boolean, use_memory = true) =>
+    request<ChatPrepareData>(`/chat/conversations/${id}/messages/prepare`, {
+      method: "POST",
+      body: JSON.stringify({ question, use_profile, use_memory }),
+    }),
+  persistMessage: (id: string, payload: ChatPersistRequest) =>
+    request<ChatMessage>(`/chat/conversations/${id}/messages/persist`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  searchMsd: (q: string, limit = 5) =>
+    request<MsdSearchData>(`/knowledge/msd/search?${new URLSearchParams({ q, limit: String(limit) })}`),
+  extractMsdPage: (url: string) =>
+    request<MsdPageData>(`/knowledge/msd/page?${new URLSearchParams({ url })}`),
+  getMsdPage: (url: string) =>
+    request<MsdPageData>(`/knowledge/msd/page?${new URLSearchParams({ url })}`),
   getCitation: (chunkId: string) => request<CitationDetail>(`/content/citations/${chunkId}`),
   previewUrl: (documentId: string, pageNumber: number) => `${API}/content/documents/${documentId}/pages/${pageNumber}/preview`,
   uploadReport: (file: File, reportType: Report["report_type"], signal?: AbortSignal) => {

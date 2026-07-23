@@ -2,7 +2,10 @@ import uuid
 
 from app.core.responses import AppError
 from app.models.schemas import (
+    ChatHistoryTurn,
     ChatMessage,
+    ChatPersistRequest,
+    ChatPrepareData,
     ChatQueryRequest,
     Citation,
     Conversation,
@@ -90,6 +93,66 @@ class RagService:
             raise AppError(status_code=404, code=40401, message="Conversation not found", error_type="not_found")
         self.repository.add_audit_log(user_id, "chat.delete", {"conversation_id": conversation_id})
 
+    def prepare_message(self, user_id: str, conversation_id: str, payload: ChatQueryRequest) -> ChatPrepareData:
+        """Retrieve local RAG context without calling the LLM."""
+        conversation = self.repository.get_conversation(user_id, conversation_id)
+        if conversation is None:
+            raise AppError(status_code=404, code=40401, message="Conversation not found", error_type="not_found")
+
+        history = _normalize_history(conversation.get("messages") or []) if payload.use_memory else []
+        return self._prepare(user_id, payload, history)
+
+    def persist_message(self, user_id: str, conversation_id: str, payload: ChatPersistRequest) -> ChatMessage:
+        """Append user + assistant turns after streaming generation."""
+        conversation = self.repository.get_conversation(user_id, conversation_id)
+        if conversation is None:
+            raise AppError(status_code=404, code=40401, message="Conversation not found", error_type="not_found")
+
+        created_at = utc_now()
+        user_message = ChatMessage(
+            message_id=str(uuid.uuid4()),
+            role="user",
+            content=payload.question,
+            created_at=created_at,
+        )
+        assistant_message = ChatMessage(
+            message_id=str(uuid.uuid4()),
+            role="assistant",
+            content=payload.content,
+            created_at=utc_now(),
+            risk_level=payload.risk_level,
+            suggestions=payload.suggestions,
+            profile_tags_used=payload.profile_tags_used,
+            citations=payload.citations,
+            evidence_available=payload.evidence_available,
+        )
+
+        conversation["messages"].append(user_message.model_dump(exclude_none=True))
+        conversation["messages"].append(assistant_message.model_dump(exclude_none=True))
+        if not conversation.get("title") or conversation["title"] in {
+            "New conversation",
+            "New health chat",
+            "Health chat",
+            "新咨询",
+            "新的健康咨询",
+        }:
+            conversation["title"] = payload.question[:24] or "健康咨询"
+        conversation["preview"] = assistant_message.content[:80]
+        conversation["updated_at"] = assistant_message.created_at
+        self.repository.update_conversation(user_id, conversation)
+        self.repository.add_audit_log(
+            user_id,
+            "chat.message",
+            {
+                "conversation_id": conversation_id,
+                "question": payload.question,
+                "risk_level": assistant_message.risk_level,
+                "evidence_available": assistant_message.evidence_available,
+                "persisted_via": "persist",
+            },
+        )
+        return assistant_message
+
     def send_message(self, user_id: str, conversation_id: str, payload: ChatQueryRequest) -> ChatMessage:
         conversation = self.repository.get_conversation(user_id, conversation_id)
         if conversation is None:
@@ -130,7 +193,7 @@ class RagService:
         )
         return assistant_message
 
-    def _answer(self, user_id: str, payload: ChatQueryRequest, history: list[dict]) -> ChatMessage:
+    def _prepare(self, user_id: str, payload: ChatQueryRequest, history: list[dict]) -> ChatPrepareData:
         profile_tags: list[str] = []
         profile_context = ""
         profile_keywords: list[str] = []
@@ -144,63 +207,79 @@ class RagService:
         risk_level = "high" if _has_red_flag(payload.question) else "unknown"
         retrieval_query = _build_retrieval_query(payload.question, history)
         chunks = self.knowledge_service.search(retrieval_query, tags=profile_tags, limit=5)
-        citations = [
-            Citation(
-                chunk_id=chunk.chunk_id,
-                article_title=chunk.article_title,
-                section_title=chunk.section_title,
-                source_url=chunk.source_url,
-            )
-            for chunk in chunks
-        ]
+
+        refusal_content: str | None = None
+        suggestions: list[str] | None = None
+        evidence_available = bool(chunks)
 
         if risk_level == "high":
-            content = (
-                "您描述的内容可能涉及紧急情况警示信号。请不要等待线上回复。"
-                "请立即联系当地急救服务或前往急诊。本系统仅提供健康科普，不能替代现场医疗救治。"
-            )
-            if profile_context:
-                content += "\n\n就医时可携带/告知的个人健康信息：\n" + profile_context
-            suggestions = [
-                "立即联系急救服务。",
-                "在等待救援时尽量保证安全并持续观察。",
-                "如条件允许，准备病史、过敏史、用药和近期报告。",
-            ]
-            evidence_available = bool(citations)
+            refusal_content, suggestions = _high_risk_refusal(profile_context)
+            evidence_available = bool(chunks)
         elif not chunks:
-            content = (
-                "未检索到足够相关的授权 MSD 知识块，因此后端不会编造医学解释。"
-                "请补充症状持续时间、伴随表现和相关病史，或线下咨询合格医生。"
-            )
-            if history:
-                content += "\n\n系统已读取本会话前序对话，但仍缺少匹配知识来源；可换一种更具体的描述继续追问。"
-            if profile_context:
-                content += "\n\n已读取到你的健康画像：\n" + profile_context
-            suggestions = [
-                "补充症状出现时间、持续时长和伴随症状。",
-                "若症状持续、加重或令人担心，请及时线下就医。",
-            ]
+            refusal_content, suggestions = _no_evidence_refusal(profile_context, history)
             risk_level = "unknown"
             evidence_available = False
-        else:
-            generated = self.qwen_client.generate_answer(
-                payload.question,
-                profile_tags,
-                chunks,
-                profile_context=profile_context,
-                history=history,
-                profile_keywords=profile_keywords,
-            )
-            content = generated["answer"]
-            suggestions = generated["suggestions"]
-            risk_level = generated["risk_level"]
-            evidence_available = True
 
         display_tags = humanize_profile_tags(profile_tags) if profile_tags else []
         if profile_context and not display_tags:
             display_tags = ["已使用健康画像"]
         if history:
             display_tags = ["多轮会话记忆", *display_tags]
+
+        return ChatPrepareData(
+            question=payload.question,
+            retrieval_query=retrieval_query,
+            chunks=chunks,
+            profile_context=profile_context,
+            profile_tags=profile_tags,
+            profile_keywords=profile_keywords,
+            risk_level=risk_level,  # type: ignore[arg-type]
+            history=[ChatHistoryTurn(role=item["role"], content=item["content"]) for item in history],
+            evidence_available=evidence_available,
+            refusal_content=refusal_content,
+            suggestions=suggestions,
+            profile_tags_used=display_tags or None,
+        )
+
+    def _answer(self, user_id: str, payload: ChatQueryRequest, history: list[dict]) -> ChatMessage:
+        prepared = self._prepare(user_id, payload, history)
+
+        if prepared.refusal_content is not None:
+            content = prepared.refusal_content
+            suggestions = prepared.suggestions or []
+            risk_level = prepared.risk_level
+            evidence_available = prepared.evidence_available
+            citations = [
+                Citation(
+                    chunk_id=chunk.chunk_id,
+                    article_title=chunk.article_title,
+                    section_title=chunk.section_title,
+                    source_url=chunk.source_url,
+                )
+                for chunk in prepared.chunks
+            ] if prepared.risk_level == "high" else []
+        else:
+            generated = self.qwen_client.generate_answer(
+                payload.question,
+                prepared.profile_tags,
+                prepared.chunks,
+                profile_context=prepared.profile_context,
+                history=history,
+                profile_keywords=prepared.profile_keywords,
+            )
+            content = generated["answer"]
+            suggestions = generated["suggestions"]
+            risk_level = generated["risk_level"]
+            evidence_available = True
+            citations = [
+                Citation(
+                    chunk_id=chunk.chunk_id,
+                    article_title=chunk.article_title,
+                    section_title=chunk.section_title,
+                    source_url=chunk.source_url,
+                )
+                for chunk in prepared.chunks
+            ]
 
         return ChatMessage(
             message_id=str(uuid.uuid4()),
@@ -209,7 +288,7 @@ class RagService:
             created_at=utc_now(),
             risk_level=risk_level,
             suggestions=suggestions,
-            profile_tags_used=display_tags,
+            profile_tags_used=prepared.profile_tags_used,
             citations=citations,
             evidence_available=evidence_available,
         )
@@ -256,3 +335,34 @@ def _build_retrieval_query(question: str, history: list[dict]) -> str:
 def _has_red_flag(question: str) -> bool:
     normalized = question.lower()
     return any(keyword.lower() in normalized for keyword in RED_FLAG_KEYWORDS)
+
+
+def _high_risk_refusal(profile_context: str) -> tuple[str, list[str]]:
+    content = (
+        "您描述的内容可能涉及紧急情况警示信号。请不要等待线上回复。"
+        "请立即联系当地急救服务或前往急诊。本系统仅提供健康科普，不能替代现场医疗救治。"
+    )
+    if profile_context:
+        content += "\n\n就医时可携带/告知的个人健康信息：\n" + profile_context
+    suggestions = [
+        "立即联系急救服务。",
+        "在等待救援时尽量保证安全并持续观察。",
+        "如条件允许，准备病史、过敏史、用药和近期报告。",
+    ]
+    return content, suggestions
+
+
+def _no_evidence_refusal(profile_context: str, history: list[dict]) -> tuple[str, list[str]]:
+    content = (
+        "未检索到足够相关的授权 MSD 知识块，因此后端不会编造医学解释。"
+        "请补充症状持续时间、伴随表现和相关病史，或线下咨询合格医生。"
+    )
+    if history:
+        content += "\n\n系统已读取本会话前序对话，但仍缺少匹配知识来源；可换一种更具体的描述继续追问。"
+    if profile_context:
+        content += "\n\n已读取到你的健康画像：\n" + profile_context
+    suggestions = [
+        "补充症状出现时间、持续时长和伴随症状。",
+        "若症状持续、加重或令人担心，请及时线下就医。",
+    ]
+    return content, suggestions

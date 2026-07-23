@@ -2,6 +2,7 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { syncAccessTokenCookie } from "@/lib/api/client";
 
 const queryClient = new QueryClient({
@@ -20,5 +21,11 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
     void import("@/lib/api/browser").then(({ worker }) => worker.start({ onUnhandledRequest: "bypass" })).then(() => setMockReady(true));
   }, []);
 
-  return <QueryClientProvider client={queryClient}>{mockReady ? children : <div className="loading"><div className="spinner" /></div>}</QueryClientProvider>;
+  return (
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        {mockReady ? children : <div className="loading"><div className="spinner" /></div>}
+      </TooltipProvider>
+    </QueryClientProvider>
+  );
 }

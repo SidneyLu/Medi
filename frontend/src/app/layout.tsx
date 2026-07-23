@@ -1,6 +1,10 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { AppProviders } from "@/components/app-providers";
+import { Geist } from "next/font/google";
+import { cn } from "@/lib/utils";
+
+const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 
 export const metadata: Metadata = {
   title: "Medi-家用医疗健康助手",
@@ -9,7 +13,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="zh-CN">
+    <html lang="zh-CN" className={cn("font-sans", geist.variable)}>
       <body>
         <AppProviders>{children}</AppProviders>
       </body>

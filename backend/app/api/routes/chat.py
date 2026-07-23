@@ -4,7 +4,14 @@ from fastapi import APIRouter, Depends, status
 
 from app.api.deps import get_current_user, get_rag_service
 from app.core.responses import ApiResponse, ok
-from app.models.schemas import ChatMessage, ChatQueryRequest, ConversationDetail, ConversationListData
+from app.models.schemas import (
+    ChatMessage,
+    ChatPersistRequest,
+    ChatPrepareData,
+    ChatQueryRequest,
+    ConversationDetail,
+    ConversationListData,
+)
 from app.services.rag_service import RagService
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -53,3 +60,23 @@ def send_message(
     service: Annotated[RagService, Depends(get_rag_service)],
 ) -> ApiResponse[ChatMessage]:
     return ok(service.send_message(current_user["id"], conversation_id, payload))
+
+
+@router.post("/conversations/{conversation_id}/messages/prepare", response_model=ApiResponse[ChatPrepareData])
+def prepare_message(
+    conversation_id: str,
+    payload: ChatQueryRequest,
+    current_user: Annotated[dict[str, Any], Depends(get_current_user)],
+    service: Annotated[RagService, Depends(get_rag_service)],
+) -> ApiResponse[ChatPrepareData]:
+    return ok(service.prepare_message(current_user["id"], conversation_id, payload))
+
+
+@router.post("/conversations/{conversation_id}/messages/persist", response_model=ApiResponse[ChatMessage])
+def persist_message(
+    conversation_id: str,
+    payload: ChatPersistRequest,
+    current_user: Annotated[dict[str, Any], Depends(get_current_user)],
+    service: Annotated[RagService, Depends(get_rag_service)],
+) -> ApiResponse[ChatMessage]:
+    return ok(service.persist_message(current_user["id"], conversation_id, payload))

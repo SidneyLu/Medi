@@ -61,6 +61,76 @@ export type ConversationDetail = Conversation & {
   messages: ChatMessage[];
 };
 
+export type ChatQueryRequest = {
+  question: string;
+  use_profile?: boolean;
+  use_memory?: boolean;
+};
+
+export type ChatHistoryTurn = {
+  role: "user" | "assistant";
+  content: string;
+};
+
+export type KnowledgeChunk = {
+  chunk_id: string;
+  article_title: string;
+  section_title: string;
+  source_url: string;
+  category: string;
+  content: string;
+  score: number;
+  tags: string[];
+  version_label?: string | null;
+  revised_at?: string | null;
+};
+
+/** POST /api/v1/chat/conversations/{id}/messages/prepare */
+export type ChatPrepareData = {
+  question: string;
+  retrieval_query: string;
+  chunks: KnowledgeChunk[];
+  profile_context: string;
+  profile_tags: string[];
+  profile_keywords: string[];
+  history: ChatHistoryTurn[];
+  risk_level: RiskLevel;
+  evidence_available: boolean;
+  refusal_content?: string | null;
+  suggestions?: string[] | null;
+  profile_tags_used?: string[] | null;
+};
+
+/** POST /api/v1/chat/conversations/{id}/messages/persist */
+export type ChatPersistRequest = {
+  question: string;
+  content: string;
+  risk_level?: RiskLevel | null;
+  suggestions?: string[] | null;
+  evidence_available?: boolean | null;
+  profile_tags_used?: string[] | null;
+  citations?: Citation[] | null;
+};
+
+export type MsdSearchHit = {
+  title: string;
+  url: string;
+  snippet: string;
+};
+
+/** GET /api/v1/knowledge/msd/search?q=&limit= */
+export type MsdSearchData = {
+  query: string;
+  items: MsdSearchHit[];
+};
+
+/** GET /api/v1/knowledge/msd/page?url= */
+export type MsdPageData = {
+  title: string;
+  url: string;
+  summary: string;
+};
+
 export type ReportStatus =
   | "uploaded"
   | "ocr_processing"

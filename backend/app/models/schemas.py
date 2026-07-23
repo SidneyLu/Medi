@@ -131,6 +131,23 @@ class KnowledgeSearchData(BaseModel):
     chunks: list[KnowledgeChunkData]
 
 
+class MsdSearchHit(BaseModel):
+    title: str
+    url: str
+    snippet: str = ""
+
+
+class MsdSearchData(BaseModel):
+    query: str
+    items: list[MsdSearchHit]
+
+
+class MsdPageData(BaseModel):
+    title: str
+    url: str
+    summary: str = ""
+
+
 class Paginated(BaseModel):
     items: list
     next_cursor: str | None = None
@@ -140,6 +157,38 @@ class ChatQueryRequest(BaseModel):
     question: str = Field(..., min_length=2, max_length=1000)
     use_profile: bool = True
     use_memory: bool = True
+
+
+class ChatHistoryTurn(BaseModel):
+    role: Role
+    content: str
+
+
+class ChatPrepareData(BaseModel):
+    """Retrieval + safety prep for streaming chat (no LLM call)."""
+
+    question: str
+    retrieval_query: str
+    chunks: list[KnowledgeChunkData]
+    profile_context: str = ""
+    profile_tags: list[str] = Field(default_factory=list)
+    profile_keywords: list[str] = Field(default_factory=list)
+    history: list[ChatHistoryTurn] = Field(default_factory=list)
+    risk_level: RiskLevel = "unknown"
+    evidence_available: bool = False
+    refusal_content: str | None = None
+    suggestions: list[str] | None = None
+    profile_tags_used: list[str] | None = None
+
+
+class ChatPersistRequest(BaseModel):
+    question: str = Field(..., min_length=2, max_length=1000)
+    content: str = Field(..., min_length=1, max_length=20000, description="Final assistant message content")
+    risk_level: RiskLevel | None = None
+    suggestions: list[str] | None = None
+    evidence_available: bool | None = None
+    profile_tags_used: list[str] | None = None
+    citations: list[Citation] | None = None
 
 
 class Conversation(BaseModel):

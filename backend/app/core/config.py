@@ -66,7 +66,7 @@ def get_settings() -> Settings:
         database_path=database_path,
         upload_dir=upload_dir,
         seed_knowledge_path=seed_knowledge_path,
-        qwen_model=os.getenv("QWEN_MODEL", "qwen3.6-plus"),
+        qwen_model=os.getenv("QWEN_MODEL", "qwen3.5-flash"),
         qwen_api_key=os.getenv("QWEN_API_KEY") or os.getenv("DASHSCOPE_API_KEY") or None,
         msd_source_base_url=os.getenv("MSD_SOURCE_BASE_URL", "https://www.msdmanuals.cn/home"),
         cors_origins=[item.strip() for item in origins.split(",") if item.strip()],

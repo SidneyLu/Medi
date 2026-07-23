@@ -11,6 +11,48 @@ export type ProfileResponse = { profile: Profile | null; tags: string[]; keyword
 export type Conversation = { conversation_id: string; title: string; updated_at: string; preview: string };
 export type ChatMessage = { message_id: string; role: "user" | "assistant"; content: string; created_at: string; risk_level?: RiskLevel; suggestions?: string[]; profile_tags_used?: string[]; citations?: Citation[]; evidence_available?: boolean };
 export type ConversationDetail = Conversation & { messages: ChatMessage[] };
+export type KnowledgeChunkData = {
+  chunk_id: string;
+  article_title: string;
+  section_title: string;
+  source_url: string;
+  category: string;
+  content: string;
+  score?: number;
+  tags?: string[];
+  version_label?: string | null;
+  revised_at?: string | null;
+};
+export type KnowledgeChunk = KnowledgeChunkData;
+export type ChatHistoryTurn = { role: "user" | "assistant"; content: string };
+export type ChatPrepareData = {
+  question: string;
+  retrieval_query: string;
+  chunks: KnowledgeChunkData[];
+  profile_context: string;
+  profile_tags: string[];
+  profile_keywords: string[];
+  history: ChatHistoryTurn[];
+  risk_level: RiskLevel;
+  evidence_available: boolean;
+  refusal_content?: string | null;
+  fixed_content?: string | null;
+  suggestions?: string[] | null;
+  profile_tags_used?: string[] | null;
+};
+export type ChatPersistRequest = {
+  question: string;
+  content: string;
+  risk_level?: RiskLevel | null;
+  suggestions?: string[] | null;
+  evidence_available?: boolean | null;
+  profile_tags_used?: string[] | null;
+  citations?: Citation[] | null;
+};
+export type MsdSearchHit = { title: string; url: string; snippet?: string };
+export type MsdSearchItem = MsdSearchHit;
+export type MsdSearchData = { query: string; items: MsdSearchHit[] };
+export type MsdPageData = { title: string; url: string; summary_or_sections?: string; summary?: string };
 export type ReportStatus = "uploaded" | "ocr_processing" | "needs_confirmation" | "interpreting" | "completed" | "failed";
 export type ReportItem = { item_id: string; name: string; value: number | null; unit: string; reference_low: number | null; reference_high: number | null; status: "low" | "normal" | "high" | "unknown"; explanation?: string; suggestions?: string[]; citations?: Citation[] };
 export type Report = { report_id: string; file_name: string; report_type: "physical_exam" | "blood_test" | "other"; status: ReportStatus; created_at: string; summary?: string; profile_tags_used: string[]; items: ReportItem[]; error_message?: string };
