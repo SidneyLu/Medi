@@ -1,6 +1,6 @@
 from app.models.schemas import ProfileData, ProfilePayload
 from app.services.application_repository import ApplicationRepository
-from app.services.label_rules import build_profile_tags
+from app.services.label_rules import build_profile_tags, humanize_profile_tags
 from app.services.profile_keywords import extract_profile_keywords
 
 
@@ -18,7 +18,7 @@ class ProfileService:
             "profile.upsert",
             {"tags": tags, "keywords": [item.keyword for item in keywords]},
         )
-        return ProfileData(profile=payload, tags=tags, keywords=keywords)
+        return ProfileData(profile=payload, tags=humanize_profile_tags(tags), keywords=keywords)
 
     def get_profile(self, user_id: str) -> ProfileData:
         profile, tags = self.repository.get_profile(user_id)
@@ -26,6 +26,6 @@ class ProfileService:
             return ProfileData(profile=None, tags=[], keywords=[])
         return ProfileData(
             profile=ProfilePayload(**profile),
-            tags=tags,
+            tags=humanize_profile_tags(tags),
             keywords=extract_profile_keywords(profile, tags),
         )

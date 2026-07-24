@@ -8,6 +8,7 @@ from app.core.responses import AppError
 from app.models.schemas import Citation, ReportData, ReportItem, ReportItemsUpdateRequest, ReportListData, ReportType
 from app.services.application_repository import ApplicationRepository
 from app.services.knowledge_service import KnowledgeService
+from app.services.label_rules import humanize_profile_tags
 from app.services.profile_service import ProfileService
 from app.services.qwen_client import QwenClient
 from app.services.report_indicator_extractor import ReportIndicatorExtractor, calculate_indicator_status
@@ -246,7 +247,7 @@ class ReportService:
             status=report["status"],
             created_at=report["created_at"],
             summary=report.get("summary"),
-            profile_tags_used=report.get("profile_tags_used", []),
+            profile_tags_used=humanize_profile_tags(report.get("profile_tags_used", [])),
             items=[ReportItem(**item) for item in report["items"]],
             error_message=report.get("error_message"),
         )

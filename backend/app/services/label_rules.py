@@ -45,6 +45,27 @@ TAG_LABELS = {
     "sex_unknown": "性别未说明",
     "pregnancy_pregnant": "妊娠中",
     "pregnancy_postpartum": "产后",
+    "bmi_underweight": "偏瘦",
+    "bmi_normal": "BMI正常",
+    "bmi_overweight": "超重",
+    "bmi_obesity": "肥胖",
+    "smoking_never": "从不吸烟",
+    "smoking_former": "既往吸烟",
+    "smoking_current": "当前吸烟",
+    "alcohol_none": "不饮酒",
+    "alcohol_occasional": "偶尔饮酒",
+    "alcohol_frequent": "经常饮酒",
+    "exercise_low": "较少运动",
+    "exercise_moderate": "规律运动",
+    "exercise_high": "高频运动",
+    "sleep_good": "睡眠良好",
+    "sleep_fair": "睡眠一般",
+    "sleep_poor": "睡眠较差",
+    "diet_balanced": "饮食相对均衡",
+    "diet_high_salt": "饮食偏高盐",
+    "diet_high_sugar": "饮食偏高糖",
+    "diet_high_fat": "饮食偏高脂",
+    "diet_irregular": "饮食不规律",
 }
 
 
@@ -160,23 +181,34 @@ def humanize_profile_tags(tags: list[str]) -> list[str]:
             labels.append(TAG_LABELS[tag])
             continue
         if tag in reverse_condition:
-            labels.append(f"慢病:{reverse_condition[tag]}")
+            labels.append(f"慢病：{reverse_condition[tag]}")
             continue
         if tag in reverse_allergy:
-            labels.append(f"过敏:{reverse_allergy[tag]}")
+            labels.append(f"过敏：{reverse_allergy[tag]}")
             continue
         if tag in reverse_med:
-            labels.append(f"用药:{reverse_med[tag]}")
+            labels.append(f"用药：{reverse_med[tag]}")
             continue
         if tag.startswith("condition_"):
-            labels.append(f"慢病:{tag.removeprefix('condition_')}")
+            labels.append(_prefixed_label("慢病", tag.removeprefix("condition_")))
         elif tag.startswith("allergy_"):
-            labels.append(f"过敏:{tag.removeprefix('allergy_')}")
+            labels.append(_prefixed_label("过敏", tag.removeprefix("allergy_")))
         elif tag.startswith("med_"):
-            labels.append(f"用药:{tag.removeprefix('med_')}")
+            labels.append(_prefixed_label("用药", tag.removeprefix("med_")))
+        elif tag.startswith("family_history_"):
+            labels.append(_prefixed_label("家族史", tag.removeprefix("family_history_")))
+        elif tag.startswith("symptom_"):
+            labels.append(_prefixed_label("近期症状", tag.removeprefix("symptom_")))
         else:
             labels.append(tag)
     return labels
+
+
+def _prefixed_label(prefix: str, value: str) -> str:
+    text = value.strip()
+    if not text or text in {"无", "none", "null", "unknown"}:
+        return f"无{prefix}"
+    return f"{prefix}：{text}"
 
 
 def _calculate_age(value: str | None) -> int | None:

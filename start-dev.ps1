@@ -83,10 +83,20 @@ if (-not (Test-Path $backendEnv) -and (Test-Path $backendEnvExample)) {
 }
 
 $frontendEnv = Join-Path $FrontendDir ".env.local"
+$backendDashKey = Get-DotEnvValue -Path $backendEnv -Key "DASHSCOPE_API_KEY"
+$backendDashBase = Get-DotEnvValue -Path $backendEnv -Key "DASHSCOPE_BASE_URL"
+$backendQwenModel = Get-DotEnvValue -Path $backendEnv -Key "QWEN_MODEL"
+if (-not $backendDashBase) { $backendDashBase = "https://dashscope.aliyuncs.com/compatible-mode/v1" }
+if (-not $backendQwenModel) { $backendQwenModel = "qwen3.5-flash" }
 if (-not (Test-Path $frontendEnv)) {
     @"
-NEXT_PUBLIC_API_MODE=real
+NEXT_PUBLIC_API_MODE=api
 NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:$BackendPort
+API_BASE_URL=http://127.0.0.1:$BackendPort
+DASHSCOPE_API_KEY=$backendDashKey
+QWEN_API_KEY=$backendDashKey
+QWEN_MODEL=$backendQwenModel
+DASHSCOPE_BASE_URL=$backendDashBase
 "@ | Set-Content -LiteralPath $frontendEnv -Encoding utf8
     Write-Host "Created frontend .env.local"
 }
@@ -117,8 +127,13 @@ if (-not $postgresReady) {
     throw $postgresMessage
 }
 
-$venvPython = Join-Path $BackendDir ".venv\Scripts\python.exe"
-$pythonCommand = if (Test-Path $venvPython) { $venvPython } else { "python" }
+$venvPythonCandidates = @(
+    (Join-Path $BackendDir ".venv\Scripts\python.exe"),
+    (Join-Path $BackendDir ".venv\python.exe")
+)
+$venvPython = $venvPythonCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+$pythonCommand = if ($venvPython) { $venvPython } else { "python" }
+Write-Host "Backend Python: $pythonCommand"
 
 if (-not $SkipInstall) {
     Push-Location $BackendDir
